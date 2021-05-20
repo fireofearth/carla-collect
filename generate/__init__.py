@@ -19,6 +19,15 @@ import utility as util
 import carlautil
 import carlautil.debug
 
+def get_all_vehicle_blueprints(world):
+    blueprints = world.get_blueprint_library().filter('vehicle.*')
+    blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
+    blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
+    blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
+    blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
+    blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+    return sorted(blueprints, key=lambda bp: bp.id)
+
 class SceneConfig(object):
     """Configuration used by scene builder."""
     def __init__(self, scene_interval=32,
@@ -465,10 +474,10 @@ class SceneBuilder(object):
             self.__remove_scene()
         player_location = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
         if len(self.__other_vehicles):
-            other_ids = self.__other_vehicles.keys()
+            other_ids = list(self.__other_vehicles.keys())
             other_vehicles = self.__other_vehicles.values()
             others_data = carlautil.vehicles_to_xyz_lwh_pyr_ndarray(other_vehicles).T
-            other_locations = others_data[:,:3]
+            other_locations = others_data[:3].T
             distances = np.linalg.norm(other_locations - player_location, axis=1)
             df = pd.DataFrame({
                     'frame_id': np.full((len(other_ids),), frame_id),
@@ -483,7 +492,7 @@ class SceneBuilder(object):
                     'width': others_data[4],
                     'height': others_data[5],
                     'heading': others_data[7]})
-            df = df[df['distances'] < self.radius]
+            df = df[df['distances'] < self.__radius]
             df = df[df['z'].between(self.Z_LOWERBOUND, self.Z_UPPERBOUND, inclusive=False)]
             del df['distances']
         else:
@@ -569,10 +578,11 @@ class SceneBuilder(object):
         """
         TODO: Refactor SceneBuilder so I can subclass it based on finish_scene() implementation.
         """
+        logging.info(f"in SceneBuilder.finish_scene()")
 
         self.remove_scene()
-        # self.__trajectory_data.sort_values('frame_id', inplace=True)
-        # print(self.__trajectory_data)
+        self.__trajectory_data.sort_values('frame_id', inplace=True)
+        print(self.__trajectory_data.head())
 
         # should need to adjust points based on rel. sensor loc. from ego vehicle loc.
         # self.__data_collector.Z_SENSOR_REL
@@ -589,8 +599,13 @@ class SceneBuilder(object):
 
         fig = plt.figure(figsize=(12, 12))
         ax = fig.add_subplot()
+        # Plot the road LIDAR points
         ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
+        
         ax.scatter(self.__trajectory_data['x'], self.__trajectory_data['y'], s=2, c='red')
+        
+        # for node_id in self.__trajectory_data['node_id'].unique():
+
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')

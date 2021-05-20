@@ -29,6 +29,7 @@ SetVehicleLightState = carla.command.SetVehicleLightState
 FutureActor = carla.command.FutureActor
 
 from generate.data import (
+        get_all_vehicle_blueprints,
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
 
@@ -85,15 +86,7 @@ class DataGenerator(object):
         """
         vehicle_ids = []
         data_collectors = []
-
-        blueprints = self.world.get_blueprint_library().filter('vehicle.*')
-        blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
-        blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
-        blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
-        blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
-        blueprints = [x for x in blueprints if not x.id.endswith('t2')]
-        blueprints = sorted(blueprints, key=lambda bp: bp.id)
-
+        blueprints = get_all_vehicle_blueprints(self.world)
         spawn_points = self.carla_map.get_spawn_points()
         number_of_spawn_points = len(spawn_points)
         logging.info(f"Using {self.args.n_vehicles} out of "
