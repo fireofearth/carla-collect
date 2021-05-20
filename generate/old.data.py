@@ -421,7 +421,286 @@ class IntersectionReader(MapQuerier):
         return ScenarioIntersectionLabel.NONE
 
 
+class SceneBuilder(object):
+    """Constructs a scene that contains scene_interval samples
+    of consecutive snapshots of the simulation. The scenes have:
+
+    Vehicle bounding boxes and locations in cartesion coordinates.
+
+    LIDAR overhead bitmap consisting of LIDAR points collected at
+    each of the scene_interval timesteps by the ego vehicle.
+    """
+    
+    def __init__(self, data_collector,
+            ego_vehicle,
+            other_vehicles,
+            make_sample_name,
+            first_frame,
+            scene_interval=32,
+            record_interval=5,
+            save_directory='out',
+            pixel_dim=0.5,
+            debug=False):
+        """
+        pixel_dim : np.array
+            Dimension of a pixel in meters (m)
+        """
+        self.__data_collector = data_collector
+        # __ego_vehicle : carla.Vehicle
+        self.__ego_vehicle = ego_vehicle
+        self.__save_directory = save_directory
+        self.__make_sample_name = make_sample_name
+        self.__debug = debug
+
+        self.__first_frame = first_frame
+        self.__scene_interval = scene_interval
+        self.__record_interval = record_interval
+        self.__scene_count = 0
+        self.__lidar_frames_to_get = set(range(self.__first_frame,
+                self.__first_frame \
+                + (self.__scene_interval - 1)*self.__record_interval + 1))
+        self.__lidar_frames_obtained = set()
+        self.__finished_capture_trajectory = False
+        self.__finished_lidar_trajectory = False
+
+        self.__radius = 200
+        # __other_vehicles : list of carla.Vehicle
+        self.__other_vehicles = other_vehicles
+        # __pixel_dim : float
+        self.__pixel_dim = pixel_dim
+        # __sensor_transform_at_t0 : carla.Transform
+        self.__sensor_transform_at_t0 = None
+        # __overhead_points : np.float32
+        self.__overhead_points = None
+        # __overhead_point_labels : np.uint32
+        self.__overhead_point_labels = None
+        # __overhead_point_ids : np.uint32
+        self.__overhead_point_ids = None
+        # __trajectory_data : pd.DataFrame
+        self.__trajectory_data = None
+    
+    def __capture_agents_within_radius(self, frame):
+        """
+        TODO: add type, robot to data frame
+        """
+        player_location = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
+        other_ids = self.__other_vehicles.keys()
+        other_vehicles = self.__other_vehicles.values()
+        others_data = carlautil.vehicles_to_xyz_lwh_pyr_ndarray(other_vehicles)
+        other_locations = others_data[:3]
+        distances = np.linalg.norm(other_locations - player_location, axis=1)
+        df = pd.DataFrame({
+                'frame_id': np.full((len(other_ids),), self.__scene_count),
+                'node_id': other_ids,
+                'distances': distances,
+                'x': others_data[0],
+                'y': others_data[1],
+                'z': others_data[2],
+                'length': others_data[3],
+                'width': others_data[4],
+                'height': others_data[5],
+                'heading': others_data[7]})
+        upperbound_z = 4
+        lowerbound_z = -4
+        df = df[df['distances'] < self.radius]
+        df = df[df['z'].between(lowerbound_z, upperbound_z, inclusive=False)]
+        if self.__trajectory_data is None:
+            self.__trajectory_data = df
+        else:
+            self.__trajectory_data = pd.concatenate((self.__trajectory_data, df))
+
+    def __finish_scene(self):
+        raise NotImplementedError()
+        self.__data_collector.remove_scene_builder(self.__first_frame)
+
+    def capture_trajectory(self, frame):
+        if self.__scene_count < self.__scene_interval:
+            self.__capture_agents_within_radius(frame)
+        elif self.__scene_count >= self.__scene_interval:
+            if self.__finished_capture_trajectory and self.__finished_lidar_trajectory:
+                self.__finish_scene()
+            else:
+                self.__finished_capture_trajectory = True
+        else:
+            raise Exception("Scene builder has already finished building the scene.")
+        self.__scene_count += 1
+    
+    def __capture_lidar_snapshot(self, lidar_measurement):
+        """Add LIDAR points from measurement to a collection of points
+        with __sensor_transform_at_t0 as the origin.
+
+        Parameters
+        ==========
+        lidar_measurement : carla.SemanticLidarMeasurement
+        """
+        raw_data = lidar_measurement.raw_data
+        data = np.frombuffer(raw_data, dtype=np.dtype([
+                ('x', np.float32), ('y', np.float32), ('z', np.float32),
+                ('CosAngle', np.float32), ('ObjIdx', np.uint32), ('ObjTag', np.uint32)]))
+        points = np.array([data['x'], data['y'], data['z']]).T
+        labels = data['ObjTag']
+        object_ids = data['ObjIdx']
+        if
+        if self.__sensor_transform_at_t0 is None:
+            loc = carlautil.transform_to_location_ndarray(lidar_measurement.transform)
+            mtx = carlautil.create_translation_mtx(loc[0], loc[1], loc[2])
+            points = (mtx @ points.T).T
+            self.__sensor_loc_at_t0 = loc
+            self.__overhead_points = points
+            self.__overhead_labels = labels
+            self.__overhead_ids = object_ids
+        else:
+            loc = carlautil.transform_to_location_ndarray(lidar_measurement.transform)
+            loc = loc - self.__sensor_loc_at_t0
+            mtx = carlautil.create_translation_mtx(loc[0], loc[1], loc[2])
+            points = (mtx @ points.T).T
+            self.__overhead_points = np.concatenate((self.__overhead_points, points))
+            self.__overhead_labels = np.concatenate((self.__overhead_labels, labels))
+            self.__overhead_ids = np.concatenate((self.__overhead_ids, object_ids))
+
+    def capture_lidar(self, lidar_measurement):
+        frame = lidar_measurement.frame
+        if frame in self.__lidar_frames_to_get \
+                and frame not in self.__lidar_frames_obtained:
+            self.__capture_lidar_snapshot(lidar_measurement)
+            self.__lidar_frames_obtained.add(frame)
+        if not self.__lidar_frames_to_get - self.__lidar_frames_obtained:
+            if self.__finished_capture_trajectory and self.__finished_lidar_trajectory:
+                self.__finish_scene()
+            else:
+                self.__finished_lidar_trajectory = True
+
+
 class DataCollector(object):
+    """Data collector based on DIM and Trajectron++."""
+
+    def __create_segmentation_lidar_sensor(self):
+        return self._world.spawn_actor(
+                create_semantic_lidar_blueprint(self._world),
+                carla.Transform(carla.Location(z=2.5)),
+                attach_to=self.__player,
+                attachment_type=carla.AttachmentType.Rigid)
+
+    def __init__(self, player_actor,
+            intersection_reader,
+            scene_interval=32,
+            record_interval=5,
+            save_frequency=35,
+            save_directory='out',
+            n_burn_frames=60,
+            episode=0,
+            exclude_samples=SampleLabelFilter(),
+            debug=False):
+        """
+        Parameters
+        ----------
+        player_actor : carla.Vehicle
+            Vehicle that the data collector is following around, and should collect data for.
+        intersection_reader : IntersectionReader
+            One IntersectionReader instance should be shared by all data collectors.
+        record_interval : int
+            Number of timesteps
+        scene_interval : int
+
+        save_frequency : int
+            Frequency (wrt. to CARLA simulator frame) to save data.
+        n_burn_frames : int
+            The number of initial frames to skip before saving data.
+        episode : int
+            Index of current episode to collect data from.
+        exclude_samples : SampleLabelFilter
+            Filter to exclude saving samples by label.
+        phi_attributes : attrdict.AttrDict
+            Attributes T, T_past, B, A, ...etc to construct Phi object.
+        """
+        self.__player = player_actor
+        self._intersection_reader = intersection_reader
+        self.record_interval = record_interval
+        self.scene_interval = scene_interval
+        self.save_frequency = save_frequency
+        self._save_directory = save_directory
+        self.n_burn_frames = n_burn_frames
+        self.episode = episode
+        self.exclude_samples = exclude_samples
+        self._debug = debug
+
+        self.__make_sample_name = lambda frame : "{}/ep{:03d}/agent{:03d}/frame{:08d}".format(
+                self._intersection_reader.map_name, self.episode, self.__player.id, frame)
+
+        self.__world = self.__player.get_world()
+
+        # __scene_builders : map of (int, SceneBuilder)
+        #     Store scene builders by frame.
+        self.__scene_builders = {}
+
+        # __other_vehicles : list of carla.Vehicle
+        #     List of IDs of vehicles not including __player.
+        #     Use this to track other vehicles in the scene at each timestep. 
+        self.__other_vehicles = None
+
+        # __sensor : carla.Sensor
+        #     Segmentation sensor. Data points will be used to construct overhead.
+        self.__sensor = self.__create_segmentation_lidar_sensor()
+
+        # __first_frame : int
+        #     First frame in simulation. Used to find current timestep.
+        self.__first_frame = None
+
+    def start_sensor(self):
+        # We need to pass the lambda a weak reference to
+        # self to avoid circular reference.
+        weak_self = weakref.ref(self)
+        self.sensor.listen(lambda image: DataCollector.parse_image(weak_self, image))
+    
+    def stop_sensor(self):
+        """Stop the sensor."""
+        self.sensor.stop()
+
+    def destroy(self):
+        """Release all the CARLA resources used by this collector."""
+        self.sensor.destroy()
+        self.sensor = None
+
+    def remove_scene_builder(self, frame)
+        del self.__scene_builders[frame]
+
+    def set_vehicles(self, vehicle_ids):
+        """Given a list of non-player vehicle IDs retreive the vehicles corr.
+        those IDs to watch.
+        Used at the start of data collection. Should only be called once.
+        Do not add the player vehicle ID in the list!
+        """
+        if self.__other_vehicles is None:
+            vehicles = self.__world.get_actors(vehicle_ids)
+            self.__other_vehicles = dict(zip(vehicle_ids, vehicles))
+        else:
+            raise Exception("Should not call more than once.")
+    
+    def capture_step(self, frame):
+        if self.__first_frame is None:
+            self.__first_frame = frame
+        if frame - self.__first_frame < self.n_burn_frames:
+            return
+        if frame % self.record_interval == 0:
+            scene_frame = frame % self.record_interval
+
+    @staticmethod
+    def parse_image(weak_self, image):
+        """Pass sensor image to each scene builder.
+
+        Parameters
+        ==========
+        image : carla.SemanticLidarMeasurement
+        """
+        self = weak_self()
+        if not self:
+            return
+        logging.debug(f"in LidarManager.parse_image() player = {self.__player.id} frame = {image.frame}")
+        for scene_builder in self.__scene_builders.values():
+            scene_builder.capture_lidar(image)
+
+
+class OldDataCollector(object):
     """Data collector based on DIM."""
 
     def __create_lidar_sensor(self):

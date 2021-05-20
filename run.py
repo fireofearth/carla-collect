@@ -45,14 +45,7 @@ class DataGenerator(object):
         self.n_frames = self.args.n_frames
         # delta : float
         #     Step size for synchronous mode.
-        #     Note: setting step size to t=0.2 corresponds to frequence 5HZ
-        #     And 4 seconds of future positions when using ESP parameter T=20
-        self.delta = 0.2
-        # max_substep_delta_time : float
-        # max_substeps : int
-        #     Set these such that delta <= max_substep_delta_time * max_substeps
-        self.max_substep_delta_time = 0.013
-        self.max_substeps = 16
+        self.delta = 0.1
         if self.args.seed is None:
             np.random.seed(int(time.time()))
         else:
@@ -76,7 +69,7 @@ class DataGenerator(object):
                 intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
                 slope_type=[ScenarioSlopeLabel.SLOPES])
 
-    def _setup_actors(self, episode):
+    def __setup_actors(self, episode):
         """Setup vehicles and data collectors for an episode.
 
         Parameters
@@ -166,7 +159,7 @@ class DataGenerator(object):
         logging.info(f"spawned {len(vehicle_ids)} vehicles")
         return vehicle_ids, data_collectors
     
-    def _run_episode(self, episode):
+    def __run_episode(self, episode):
         """Run a dataset collection episode.
         
         Parameters
@@ -179,7 +172,7 @@ class DataGenerator(object):
 
         try:
             logging.info("Create vehicles and data collectors.")
-            vehicle_ids, data_collectors = self._setup_actors(episode)
+            vehicle_ids, data_collectors = self.__setup_actors(episode)
             logging.info("Running simulation.")
             for idx in range(self.n_frames):
                 frame = self.world.tick()
@@ -206,14 +199,12 @@ class DataGenerator(object):
             logging.info("Enabling synchronous setting and updating traffic manager.")
             original_settings = self.world.get_settings()
             settings = self.world.get_settings()
-            settings.max_substep_delta_time = self.max_substep_delta_time
-            settings.max_substeps = self.max_substeps
             settings.fixed_delta_seconds = self.delta
             settings.synchronous_mode = True
 
             self.traffic_manager.set_synchronous_mode(True)
             self.traffic_manager.set_global_distance_to_leading_vehicle(1.0)
-            self.traffic_manager.global_percentage_speed_difference(50.0)
+            self.traffic_manager.global_percentage_speed_difference(0.0)
             if self.args.seed is not None:
                 self.traffic_manager.set_random_device_seed(self.args.seed)        
             if self.args.hybrid:
@@ -224,7 +215,7 @@ class DataGenerator(object):
 
             for episode in range(self.n_episodes):
                 logging.info(f"Running episode {episode}.")
-                self._run_episode(episode)
+                self.__run_episode(episode)
 
         finally:
             logging.info("Reverting to original settings.")
