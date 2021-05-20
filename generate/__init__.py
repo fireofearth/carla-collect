@@ -1,5 +1,6 @@
 """Functions and classes for data collection."""
 
+import os
 import collections
 import abc
 from abc import ABC, abstractmethod
@@ -368,6 +369,7 @@ class SceneBuilder(object):
             map_reader,
             ego_vehicle,
             other_vehicles,
+            lidar_feeds,
             scene_name,
             first_frame,
             scene_config=SceneConfig(),
@@ -379,24 +381,31 @@ class SceneBuilder(object):
         pixel_dim : np.array
             Dimension of a pixel in meters (m)
         """
+
+        # __data_collector : DataCollector
         self.__data_collector = data_collector
+        # __map_reader : MapQuerier
         self.__map_reader = map_reader
         # __ego_vehicle : carla.Vehicle
         self.__ego_vehicle = ego_vehicle
+        # __other_vehicles : list of carla.Vehicle
+        self.__other_vehicles = other_vehicles
+        # __lidar_feeds : collections.OrderedDict
+        self.__lidar_feeds = lidar_feeds
+        self.scene_name = scene_name
+        # __first_frame : int
+        self.__first_frame = first_frame
         self.__world = self.__ego_vehicle.get_world()
         self.__save_directory = save_directory
         
         self.__exclude_samples = exclude_samples
         self.__debug = debug
 
-        self.__first_frame = first_frame
         self.__scene_config = scene_config
         self.__scene_count = 0
-        self.__lidar_frames_to_get = set(range(self.__first_frame,
-                self.__first_frame \
-                + (self.__scene_config.scene_interval \
-                    - 1)*self.__scene_config.record_interval + 1))
-        self.__lidar_frames_obtained = set()
+        self.__last_frame = self.__first_frame + (self.__scene_config.scene_interval \
+                - 1)*self.__scene_config.record_interval + 1
+
         self.__finished_capture_trajectory = False
         self.__finished_lidar_trajectory = False
 
@@ -404,10 +413,8 @@ class SceneBuilder(object):
         self.__other_vehicle_visibility = { }
 
         self.__radius = scene_radius
-        # __other_vehicles : list of carla.Vehicle
-        self.__other_vehicles = other_vehicles
-        # __sensor_transform_at_t0 : carla.Transform
-        self.__sensor_transform_at_t0 = None
+        # __sensor_loc_at_t0 : carla.Transform
+        self.__sensor_loc_at_t0 = None
         # __overhead_points : np.float32
         self.__overhead_points = None
         # __overhead_point_labels : np.uint32
@@ -502,48 +509,6 @@ class SceneBuilder(object):
             self.__trajectory_data = pd.concat((self.__trajectory_data, df),
                     ignore_index=True)
 
-    def __make_overhead_bitmap(self):
-        # SegmentationLabel.RoadLine.value
-
-        # should need to adjust points based on rel. sensor loc. from ego vehicle loc.
-        # self.__data_collector.Z_SENSOR_REL
-
-        # Select road LIDAR points.
-        road_label_mask = self.__overhead_labels == SegmentationLabel.Road.value
-        points = self.__overhead_points[road_label_mask]
-        # Trim points above/below certain Z levels.
-        z_mask = np.logical_and(
-                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
-        points = points[z_mask]
-        # fig, (ax1, ax) = plt.subplots(2, 1, figsize=(11, 16))
-
-    def remove_scene(self):
-        self.__data_collector.remove_scene_builder(self.__first_frame)
-
-    def finish_scene(self):
-        """
-        TODO: Refactor SceneBuilder so I can subclass it based on finish_scene() implementation.
-        """
-        # self.__make_overhead_bitmap()
-
-        self.__trajectory_data.sort_values('frame_id', inplace=True)
-        print(self.__trajectory_data.head())
-
-        # self.__other_vehicle_visibility[frame_id]
-        self.remove_scene()
-
-    def capture_trajectory(self, frame):
-        if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
-            frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
-            if frame_id < self.__scene_config.scene_interval:
-                logging.info(f"in SceneBuilder.capture_trajectory() frame_id = {frame_id}")
-                self.__capture_agents_within_radius(frame_id)
-            else:
-                if self.__finished_capture_trajectory and self.__finished_lidar_trajectory:
-                    self.finish_scene()
-                else:
-                    self.__finished_capture_trajectory = True
-    
     def __lidar_snapshot_to_populate_vehicle_visibility(self, lidar_measurement,
             points, labels, object_ids):
         """Called by capture_lidar() to obtain vehicle visibility from
@@ -560,7 +525,7 @@ class SceneBuilder(object):
         return np.pad(points, [(0, 0), (0, 1)],
                 mode='constant', constant_values=1.)
 
-    def __capture_lidar_snapshot(self, lidar_measurement):
+    def __process_lidar_snapshot(self, lidar_measurement):
         """Add semantic LIDAR points from measurement to a collection of points
         with __sensor_transform_at_t0 as the origin.
 
@@ -569,6 +534,7 @@ class SceneBuilder(object):
         lidar_measurement : carla.SemanticLidarMeasurement
         """
         raw_data = lidar_measurement.raw_data
+        mtx = np.array(lidar_measurement.transform.get_matrix())
         data = np.frombuffer(raw_data, dtype=np.dtype([
                 ('x', np.float32), ('y', np.float32), ('z', np.float32),
                 ('CosAngle', np.float32), ('ObjIdx', np.uint32), ('ObjTag', np.uint32)]))
@@ -577,44 +543,78 @@ class SceneBuilder(object):
         object_ids = data['ObjIdx']
         self.__lidar_snapshot_to_populate_vehicle_visibility(lidar_measurement,
                 points, labels, object_ids)
-        if self.__sensor_transform_at_t0 is None:
+        points = self.__add_1_to_points(points)
+        points = (mtx @ points.T).T
+        points = points[:, :3]
+        if self.__sensor_loc_at_t0 is None:
             loc = carlautil.transform_to_location_ndarray(lidar_measurement.transform)
-            mtx = carlautil.create_translation_mtx(loc[0], loc[1], loc[2])
-            points = self.__add_1_to_points(points)
-            points = (mtx @ points.T).T
-            points = points[:, :3]
             self.__sensor_loc_at_t0 = loc
             self.__overhead_points = points
             self.__overhead_labels = labels
             self.__overhead_ids = object_ids
         else:
-            loc = carlautil.transform_to_location_ndarray(lidar_measurement.transform)
-            loc = loc - self.__sensor_loc_at_t0
-            mtx = carlautil.create_translation_mtx(loc[0], loc[1], loc[2])
-            points = self.__add_1_to_points(points)
-            points = (mtx @ points.T).T
-            points = points[:, :3]
-            self.__overhead_points = np.concat((self.__overhead_points, points),
-                    ignore_index=True)
-            self.__overhead_labels = np.concat((self.__overhead_labels, labels),
-                    ignore_index=True)
-            self.__overhead_ids = np.concat((self.__overhead_ids, object_ids),
-                    ignore_index=True)
+            self.__overhead_points = np.concatenate((self.__overhead_points, points))
+            self.__overhead_labels = np.concatenate((self.__overhead_labels, labels))
+            self.__overhead_ids = np.concatenate((self.__overhead_ids, object_ids))
+        
+    def __process_lidar(self):
+        for frame in range(self.__first_frame, self.__last_frame + 1):
+            lidar_measurement = self.__lidar_feeds[frame]
+            self.__process_lidar_snapshot(lidar_measurement)
+
+    def remove_scene(self):
+        self.__data_collector.remove_scene_builder(self.__first_frame)
+
+    def finish_scene(self):
+        """
+        TODO: Refactor SceneBuilder so I can subclass it based on finish_scene() implementation.
+        """
+
+        self.remove_scene()
+        # self.__trajectory_data.sort_values('frame_id', inplace=True)
+        # print(self.__trajectory_data)
+
+        # should need to adjust points based on rel. sensor loc. from ego vehicle loc.
+        # self.__data_collector.Z_SENSOR_REL
+
+        # Process all of the LIDAR points
+        self.__process_lidar()
+        # Select road LIDAR points.
+        road_label_mask = self.__overhead_labels == SegmentationLabel.Road.value
+        points = self.__overhead_points[road_label_mask]
+        # Trim points above/below certain Z levels.
+        z_mask = np.logical_and(
+                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
+        points = points[z_mask]
+
+        fig = plt.figure(figsize=(12, 12))
+        ax = fig.add_subplot()
+        ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
+        ax.scatter(self.__trajectory_data['x'], self.__trajectory_data['y'], s=2, c='red')
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_aspect('equal')
+        fn = f"out.png"
+        fp = os.path.join(self.__save_directory, fn)
+        fig.savefig(fp)
+
+    def capture_trajectory(self, frame):
+        if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
+            frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
+            if frame_id < self.__scene_config.scene_interval:
+                logging.info(f"in SceneBuilder.capture_trajectory() frame_id = {frame_id}")
+                self.__capture_agents_within_radius(frame_id)
+            else:
+                if self.__finished_lidar_trajectory:
+                    self.finish_scene()
+                else:
+                    self.__finished_capture_trajectory = True
 
     def capture_lidar(self, lidar_measurement):
         frame = lidar_measurement.frame
-        if frame in self.__lidar_frames_to_get \
-                and frame not in self.__lidar_frames_obtained:
-            logging.info(f"in SceneBuilder.capture_lidar() frame = {frame}")
-            self.__capture_lidar_snapshot(lidar_measurement)
-            self.__lidar_frames_obtained.add(frame)
-            print(self.__lidar_frames_to_get)
-            print(self.__lidar_frames_obtained)
-        if not self.__lidar_frames_to_get - self.__lidar_frames_obtained:
-            if self.__finished_capture_trajectory and self.__finished_lidar_trajectory:
-                self.finish_scene()
-            else:
-                self.__finished_lidar_trajectory = True
+        if frame >= self.__last_frame:
+            self.__finished_lidar_trajectory = True
+
 
 class DataCollector(object):
     """Data collector based on DIM and Trajectron++."""
@@ -689,15 +689,20 @@ class DataCollector(object):
         #     Segmentation sensor. Data points will be used to construct overhead.
         self.__sensor = self.__create_segmentation_lidar_sensor()
 
+        # __n_feeds : int
+        #     Size of LIDAR feed dict
+        self.__n_feeds = (self.__scene_config.scene_interval \
+                + 1)*self.__scene_config.record_interval
+
         # __first_frame : int
         #     First frame in simulation. Used to find current timestep.
         self.__first_frame = None
 
-        # lidar_feeds collections.OrderedDict
+        # __lidar_feeds : collections.OrderedDict
         #     Where int key is frame index and value
         #     is a carla.LidarMeasurement or carla.SemanticLidarMeasurement
-        # self.lidar_feeds = collections.OrderedDict()
-    
+        self.__lidar_feeds = collections.OrderedDict()
+        
     @property
     def n_scene_builders(self):
         return len(self.__scene_builders)
@@ -726,28 +731,37 @@ class DataCollector(object):
             del self.__scene_builders[frame]
 
     def finish_scenes(self):
-        for scene_builder in self.__scene_builders.values():
+        for scene_builder in list(self.__scene_builders.values()):
             scene_builder.finish_scene()
     
+    def __should_create_scene_builder(self, frame):
+        return (frame - self.__first_frame - self.n_burn_frames) \
+                % (self.__scene_config.record_interval * self.__save_frequency) == 0
+
     def capture_step(self, frame):
         if self.__first_frame is None:
             self.__first_frame = frame
         if frame - self.__first_frame < self.n_burn_frames:
             return
-        if frame % (self.__scene_config.record_interval * self.__save_frequency) == 0:
+        if self.__should_create_scene_builder(frame):
             logging.info(f"in DataCollector.capture_step() player = {self.__ego_vehicle.id} frame = {frame}")
+            logging.info("Create scene builder")
             self.__scene_builders[frame] = SceneBuilder(self,
                     self.__map_reader,
                     self.__ego_vehicle,
                     self.__other_vehicles,
+                    self.__lidar_feeds,
                     self.__make_scene_name(frame),
                     frame,
                     scene_config=self.__scene_config,
                     save_directory=self.__save_directory,
                     exclude_samples=self.__exclude_samples,
                     debug=self.__debug)
-        for scene_builder in self.__scene_builders.values():
+        for scene_builder in list(self.__scene_builders.values()):
             scene_builder.capture_trajectory(frame)
+        
+        while len(self.__lidar_feeds) > self.__n_feeds:
+            self.__lidar_feeds.popitem(last=False)
 
     @staticmethod
     def parse_image(weak_self, image):
@@ -761,6 +775,6 @@ class DataCollector(object):
         if not self:
             return
         logging.info(f"in DataCollector.parse_image() player = {self.__ego_vehicle.id} frame = {image.frame}")
-        # self.lidar_feeds[image.frame] = image
-        for scene_builder in self.__scene_builders.values():
+        self.__lidar_feeds[image.frame] = image
+        for scene_builder in list(self.__scene_builders.values()):
             scene_builder.capture_lidar(image)
