@@ -360,7 +360,22 @@ class SegmentationLabel(enum.Enum):
     SideWalk = 8
     Vehicle = 10
 
-class SceneBuilder(object):
+
+class SceneBuilderData(object):
+    def __init__(self, save_directory, scene_name, trajectory_data, overhead_points,
+            overhead_labels, overhead_ids, sensor_loc_at_t0, first_frame, scene_config):
+        self.save_directory = save_directory
+        self.scene_name = scene_name
+        self.trajectory_data = trajectory_data
+        self.overhead_points = overhead_points
+        self.overhead_labels = overhead_labels
+        self.overhead_ids = overhead_ids
+        self.sensor_loc_at_t0 = sensor_loc_at_t0
+        self.first_frame = first_frame
+        self.scene_config = scene_config
+
+
+class SceneBuilder(ABC):
     """Constructs a scene that contains scene_interval samples
     of consecutive snapshots of the simulation. The scenes have:
 
@@ -389,7 +404,6 @@ class SceneBuilder(object):
         pixel_dim : np.array
             Dimension of a pixel in meters (m)
         """
-
         # __data_collector : DataCollector
         self.__data_collector = data_collector
         # __map_reader : MapQuerier
@@ -400,7 +414,7 @@ class SceneBuilder(object):
         self.__other_vehicles = other_vehicles
         # __lidar_feeds : collections.OrderedDict
         self.__lidar_feeds = lidar_feeds
-        self.scene_name = scene_name
+        self.__scene_name = scene_name
         # __first_frame : int
         self.__first_frame = first_frame
         self.__world = self.__ego_vehicle.get_world()
@@ -410,7 +424,6 @@ class SceneBuilder(object):
         self.__debug = debug
 
         self.__scene_config = scene_config
-        self.__scene_count = 0
         self.__last_frame = self.__first_frame + (self.__scene_config.scene_interval \
                 - 1)*self.__scene_config.record_interval + 1
 
@@ -429,8 +442,8 @@ class SceneBuilder(object):
         self.__overhead_points = None
         # __overhead_point_labels : np.uint32
         self.__overhead_point_labels = None
-        # __overhead_point_ids : np.uint32
-        self.__overhead_point_ids = None
+        # __overhead_ids : np.uint32
+        self.__overhead_ids = None
         # __trajectory_data : pd.DataFrame
         self.__trajectory_data = None
     
@@ -585,49 +598,28 @@ class SceneBuilder(object):
         comp_keys.columns = ['frame_id', 'node_id']
         self.__trajectory_data = pd.merge(self.__trajectory_data, comp_keys,
                 how='inner', on=['frame_id', 'node_id'])
+        # Return scene raw data
+        return SceneBuilderData(self.__save_directory, self.__scene_name, self.__trajectory_data,
+                self.__overhead_points, self.__overhead_labels, self.__overhead_ids,
+                self.__sensor_loc_at_t0, self.__first_frame, self.__scene_config)
 
     def __remove_scene_builder(self):
         self.__data_collector.remove_scene_builder(self.__first_frame)
 
+    @abstractmethod
+    def process_scene(self, scene_data):
+        """
+
+        """
+        pass
+
     def finish_scene(self):
         """
-        TODO: Refactor SceneBuilder so I can subclass it based on finish_scene() implementation.
         """
         logging.info(f"in SceneBuilder.finish_scene()")
         # Complete data collection before doing starting data processing.
-        self.__complete_data_collection()
-        # Select road LIDAR points.
-        road_label_mask = self.__overhead_labels == SegmentationLabel.Road.value
-        points = self.__overhead_points[road_label_mask]
-        # Trim points above/below certain Z levels.
-        z_mask = np.logical_and(
-                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
-        points = points[z_mask]
-
-        # Plot LIDAR and Trajectory points
-        fig = plt.figure(figsize=(12, 12))
-        ax = fig.add_subplot()
-        # Plot the road LIDAR points
-        ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
-        # Plot the Trajectory points
-        colors = ['green', 'yellow', 'orange', 'purple', 'pink']
-        for idx, node_id in enumerate(self.__trajectory_data['node_id'].unique()):
-            trajectory_data = self.__trajectory_data
-            trajectory_data = trajectory_data[trajectory_data['node_id'] == node_id]
-            color = colors[idx % 5] if node_id != 'ego' else 'red'
-            ax.scatter(trajectory_data['x'], trajectory_data['y'], s=2, c=color)
-
-            # Plot LIDAR points color coded by other vehicles
-            # car_mask = self.__overhead_ids == node_id
-            # points = self.__overhead_points[car_mask]
-            # ax.scatter(points[:, 0], points[:, 1], s=2, c=color)
-
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_aspect('equal')
-        fn = f"{ self.scene_name.replace('/', '_') }.png"
-        fp = os.path.join(self.__save_directory, fn)
-        fig.savefig(fp)
+        data = self.__complete_data_collection()
+        self.process_scene(data)
 
     def capture_trajectory(self, frame):
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
@@ -647,6 +639,43 @@ class SceneBuilder(object):
             self.__finished_lidar_trajectory = True
 
 
+class PlotSceneBuilder(SceneBuilder):
+    def process_scene(self, data):
+        data.overhead_labels
+        # Select road LIDAR points.
+        road_label_mask = data.overhead_labels == SegmentationLabel.Road.value
+        points = data.overhead_points[road_label_mask]
+        # Trim points above/below certain Z levels.
+        z_mask = np.logical_and(
+                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
+        points = points[z_mask]
+
+        # Plot LIDAR and Trajectory points
+        fig = plt.figure(figsize=(12, 12))
+        ax = fig.add_subplot()
+        # Plot the road LIDAR points
+        ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
+        # Plot the Trajectory points
+        colors = ['green', 'yellow', 'orange', 'purple', 'pink']
+        for idx, node_id in enumerate(data.trajectory_data['node_id'].unique()):
+            trajectory_data = data.trajectory_data
+            trajectory_data = trajectory_data[trajectory_data['node_id'] == node_id]
+            color = colors[idx % 5] if node_id != 'ego' else 'red'
+            ax.scatter(trajectory_data['x'], trajectory_data['y'], s=2, c=color)
+
+            # Plot LIDAR points color coded by other vehicles
+            # car_mask = data.overhead_ids == node_id
+            # points = data.overhead_points[car_mask]
+            # ax.scatter(points[:, 0], points[:, 1], s=2, c=color)
+
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_aspect('equal')
+        fn = f"{ data.scene_name.replace('/', '_') }.png"
+        fp = os.path.join(data.save_directory, fn)
+        fig.savefig(fp)
+
+
 class DataCollector(object):
     """Data collector based on DIM and Trajectron++."""
 
@@ -663,6 +692,7 @@ class DataCollector(object):
             map_reader,
             other_vehicle_ids,
             scene_config=SceneConfig(),
+            scene_builder_cls=PlotSceneBuilder,
             save_frequency=35,
             save_directory='out',
             n_burn_frames=60,
@@ -693,6 +723,7 @@ class DataCollector(object):
         self.__map_reader = map_reader
         self.__save_frequency = save_frequency
         self.__scene_config = scene_config
+        self.__scene_builder_cls = scene_builder_cls
         self.__save_directory = save_directory
         self.n_burn_frames = n_burn_frames
         self.episode = episode
@@ -777,7 +808,7 @@ class DataCollector(object):
         if self.__should_create_scene_builder(frame):
             logging.info(f"in DataCollector.capture_step() player = {self.__ego_vehicle.id} frame = {frame}")
             logging.info("Create scene builder")
-            self.__scene_builders[frame] = SceneBuilder(self,
+            self.__scene_builders[frame] = self.__scene_builder_cls(self,
                     self.__map_reader,
                     self.__ego_vehicle,
                     self.__other_vehicles,
@@ -809,3 +840,4 @@ class DataCollector(object):
         self.__lidar_feeds[image.frame] = image
         for scene_builder in list(self.__scene_builders.values()):
             scene_builder.capture_lidar(image)
+
