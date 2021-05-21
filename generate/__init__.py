@@ -358,8 +358,7 @@ class SegmentationLabel(enum.Enum):
     RoadLine = 6
     Road = 7
     SideWalk = 8
-    Vehicles = 10
-
+    Vehicle = 10
 
 class SceneBuilder(object):
     """Constructs a scene that contains scene_interval samples
@@ -418,7 +417,9 @@ class SceneBuilder(object):
         self.__finished_capture_trajectory = False
         self.__finished_lidar_trajectory = False
 
-        # __other_vehicle_visibility : map of (int, set)
+        # __other_vehicle_visibility : map of (int, set of int)
+        #    IDs of vehicles visible to the ego vehicle by frame ID.
+        #    Vehicles are visible when then are hit by semantic LIDAR.
         self.__other_vehicle_visibility = { }
 
         self.__radius = scene_radius
@@ -471,7 +472,7 @@ class SceneBuilder(object):
         """
         labels = self.__map_reader.get_actor_labels(self.__ego_vehicle)
         if self.__should_exclude_dataset_sample(labels):
-            self.__remove_scene()
+            self.__remove_scene_builder()
         player_location = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
         if len(self.__other_vehicles):
             other_ids = list(self.__other_vehicles.keys())
@@ -526,7 +527,7 @@ class SceneBuilder(object):
         frame = lidar_measurement.frame
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
-            vehicle_label_mask = labels == SegmentationLabel.Vehicles.value
+            vehicle_label_mask = labels == SegmentationLabel.Vehicle.value
             object_ids = object_ids[vehicle_label_mask]
             self.__other_vehicle_visibility[frame_id] = set(object_ids)
 
@@ -566,12 +567,26 @@ class SceneBuilder(object):
             self.__overhead_labels = np.concatenate((self.__overhead_labels, labels))
             self.__overhead_ids = np.concatenate((self.__overhead_ids, object_ids))
         
-    def __process_lidar(self):
+    def __complete_data_collection(self):
+        """
+        """
+        # Remove scene builder from data collector.
+        self.__remove_scene_builder()
+        # Finish LIDAR raw data
         for frame in range(self.__first_frame, self.__last_frame + 1):
             lidar_measurement = self.__lidar_feeds[frame]
             self.__process_lidar_snapshot(lidar_measurement)
+        # Finish Trajectory raw data
+        self.__trajectory_data.sort_values('frame_id', inplace=True)
+        for l in self.__other_vehicle_visibility.values():
+            l.add('ego')
+        comp_keys = pd.DataFrame.from_dict(self.__other_vehicle_visibility, orient='index')
+        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
+        comp_keys.columns = ['frame_id', 'node_id']
+        self.__trajectory_data = pd.merge(self.__trajectory_data, comp_keys,
+                how='inner', on=['frame_id', 'node_id'])
 
-    def remove_scene(self):
+    def __remove_scene_builder(self):
         self.__data_collector.remove_scene_builder(self.__first_frame)
 
     def finish_scene(self):
@@ -579,16 +594,8 @@ class SceneBuilder(object):
         TODO: Refactor SceneBuilder so I can subclass it based on finish_scene() implementation.
         """
         logging.info(f"in SceneBuilder.finish_scene()")
-
-        self.remove_scene()
-        self.__trajectory_data.sort_values('frame_id', inplace=True)
-        print(self.__trajectory_data.head())
-
-        # should need to adjust points based on rel. sensor loc. from ego vehicle loc.
-        # self.__data_collector.Z_SENSOR_REL
-
-        # Process all of the LIDAR points
-        self.__process_lidar()
+        # Complete data collection before doing starting data processing.
+        self.__complete_data_collection()
         # Select road LIDAR points.
         road_label_mask = self.__overhead_labels == SegmentationLabel.Road.value
         points = self.__overhead_points[road_label_mask]
@@ -597,19 +604,28 @@ class SceneBuilder(object):
                 points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
         points = points[z_mask]
 
+        # Plot LIDAR and Trajectory points
         fig = plt.figure(figsize=(12, 12))
         ax = fig.add_subplot()
         # Plot the road LIDAR points
         ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
-        
-        ax.scatter(self.__trajectory_data['x'], self.__trajectory_data['y'], s=2, c='red')
-        
-        # for node_id in self.__trajectory_data['node_id'].unique():
+        # Plot the Trajectory points
+        colors = ['green', 'yellow', 'orange', 'purple', 'pink']
+        for idx, node_id in enumerate(self.__trajectory_data['node_id'].unique()):
+            trajectory_data = self.__trajectory_data
+            trajectory_data = trajectory_data[trajectory_data['node_id'] == node_id]
+            color = colors[idx % 5] if node_id != 'ego' else 'red'
+            ax.scatter(trajectory_data['x'], trajectory_data['y'], s=2, c=color)
+
+            # Plot LIDAR points color coded by other vehicles
+            # car_mask = self.__overhead_ids == node_id
+            # points = self.__overhead_points[car_mask]
+            # ax.scatter(points[:, 0], points[:, 1], s=2, c=color)
 
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')
-        fn = f"out.png"
+        fn = f"{ self.scene_name.replace('/', '_') }.png"
         fp = os.path.join(self.__save_directory, fn)
         fig.savefig(fp)
 
