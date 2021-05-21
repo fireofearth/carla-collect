@@ -13,7 +13,7 @@ CARLA_MAP = 'Town03'
 DELTA = 0.1
 SEED = 1
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def carla_Town03():
     client = carla.Client(CARLA_HOST, CARLA_PORT)
     client.set_timeout(10.0)
@@ -25,7 +25,7 @@ def carla_Town03():
     traffic_manager = client.get_trafficmanager(8000)
     return client, world, carla_map, traffic_manager
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def carla_Town03_synchronous(request, carla_Town03):
     client, world, carla_map, traffic_manager = carla_Town03
     original_settings = None

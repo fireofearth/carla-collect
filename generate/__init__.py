@@ -608,14 +608,17 @@ class SceneBuilder(ABC):
 
     @abstractmethod
     def process_scene(self, scene_data):
-        """
+        """Process the scene.
 
+        Parameters
+        ==========
+        scene_data : SceneBuilderData
+            The data in process the scene with.
         """
         pass
 
     def finish_scene(self):
-        """
-        """
+        """Finish scene and removes scene builder from data collector. Calls process_scene()."""
         logging.info(f"in SceneBuilder.finish_scene()")
         # Complete data collection before doing starting data processing.
         data = self.__complete_data_collection()
@@ -671,6 +674,7 @@ class PlotSceneBuilder(SceneBuilder):
         ax.set_xlabel('x')
         ax.set_ylabel('y')
         ax.set_aspect('equal')
+        fig.tight_layout()
         fn = f"{ data.scene_name.replace('/', '_') }.png"
         fp = os.path.join(data.save_directory, fn)
         fig.savefig(fp)
