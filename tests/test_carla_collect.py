@@ -6,12 +6,14 @@ import carla
 from generate import get_all_vehicle_blueprints
 from generate import DataCollector
 from generate import NaiveMapQuerier, SceneConfig
+from generate import BitmapSceneBuilder
 
 CARLA_HOST = '127.0.0.1'
 CARLA_PORT = 2000
 CARLA_MAP = 'Town03'
 DELTA = 0.1
 SEED = 1
+TESTSceneBuilder=BitmapSceneBuilder
 
 @pytest.fixture(scope="module")
 def carla_Town03():
@@ -41,7 +43,6 @@ def carla_Town03_synchronous(request, carla_Town03):
     traffic_manager.set_synchronous_mode(True)
     traffic_manager.set_global_distance_to_leading_vehicle(1.0)
     traffic_manager.global_percentage_speed_difference(0.0)
-    traffic_manager.set_random_device_seed(SEED)
     world.apply_settings(settings)
     return carla_Town03
 
@@ -67,10 +68,10 @@ def test_no_npcs(carla_Town03_synchronous):
 
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
-        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval,
-                pixel_dim=0.5)
+        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
         data_collector = DataCollector(ego_vehicle,
                 map_reader, [],
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,
@@ -119,10 +120,10 @@ def test_5_npcs(carla_Town03_synchronous):
 
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
-        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval,
-                pixel_dim=0.5)
+        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
         data_collector = DataCollector(ego_vehicle,
                 map_reader, other_vehicle_ids,
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,
@@ -175,10 +176,10 @@ def test_5_npcs_disappearing(carla_Town03_synchronous):
 
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
-        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval,
-                pixel_dim=0.5)
+        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
         data_collector = DataCollector(ego_vehicle,
                 map_reader, other_vehicle_ids,
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,
@@ -231,10 +232,10 @@ def test_1_npc_appear(carla_Town03_synchronous):
 
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
-        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval,
-                pixel_dim=0.5)
+        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
         data_collector = DataCollector(ego_vehicle,
                 map_reader, other_vehicle_ids,
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,
@@ -281,10 +282,10 @@ def test_2_data_collectors(carla_Town03_synchronous):
 
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
-        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval,
-                pixel_dim=0.5)
+        scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
         data_collector = DataCollector(vehicles[0],
                 map_reader, vehicle_ids[1:],
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,
@@ -293,6 +294,7 @@ def test_2_data_collectors(carla_Town03_synchronous):
         data_collectors.append(data_collector)
         data_collector = DataCollector(vehicles[1],
                 map_reader, vehicle_ids[:1] + vehicle_ids[2:],
+                scene_builder_cls=TESTSceneBuilder,
                 scene_config=scene_config,
                 save_frequency=save_frequency,
                 n_burn_frames=n_burn_frames,

@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
+import matplotlib.cm as cm
 import carla
 
 import utility as util
@@ -32,10 +34,10 @@ class SceneConfig(object):
     """Configuration used by scene builder."""
     def __init__(self, scene_interval=32,
             record_interval=5,
-            pixel_dim=0.5):
+            pixels_per_m=3):
         self.scene_interval = scene_interval
         self.record_interval = record_interval
-        self.pixel_dim = pixel_dim
+        self.pixels_per_m = pixels_per_m
 
 class ScenarioIntersectionLabel(object):
     """Labels samples by proximity of vehicle to intersections."""
@@ -480,9 +482,6 @@ class SceneBuilder(ABC):
         return False
     
     def __capture_agents_within_radius(self, frame_id):
-        """
-        TODO: combine with trajectron-plus-plus code
-        """
         labels = self.__map_reader.get_actor_labels(self.__ego_vehicle)
         if self.__should_exclude_dataset_sample(labels):
             self.__remove_scene_builder()
@@ -642,22 +641,86 @@ class SceneBuilder(ABC):
             self.__finished_lidar_trajectory = True
 
 
-class PlotSceneBuilder(SceneBuilder):
+def points_to_2d_histogram(points, x_min, x_max, y_min, y_max, pixels_per_m):
+    bins= [
+            pixels_per_m*(x_max - x_min),
+            pixels_per_m*(y_max - y_min)]
+    range = [[x_min, x_max], [y_min, y_max]]
+    hist, _, _ = np.histogram2d(points[:, 0], points[:, 1], bins=bins, range=range)
+    return hist
+
+
+def round_to_int(x):
+    return np.int(np.round(x))    
+
+
+class BitmapSceneBuilder(SceneBuilder):
     def process_scene(self, data):
-        data.overhead_labels
-        # Select road LIDAR points.
-        road_label_mask = data.overhead_labels == SegmentationLabel.Road.value
-        points = data.overhead_points[road_label_mask]
         # Trim points above/below certain Z levels.
+        points = data.overhead_points
         z_mask = np.logical_and(
                 points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
-        points = points[z_mask]
+        points = data.overhead_points[z_mask]
+        labels = data.overhead_labels[z_mask]
+        # Select road LIDAR points.
+        road_label_mask = labels == SegmentationLabel.Road.value
+        road_points = points[road_label_mask]
 
+        #
+        x_min = round_to_int(data.trajectory_data['x'].min() - 50)
+        x_max = round_to_int(data.trajectory_data['x'].max() + 50)
+        y_min = round_to_int(data.trajectory_data['y'].min() - 50)
+        y_max = round_to_int(data.trajectory_data['y'].max() + 50)
+        # Form bitmap
+        bitmap = points_to_2d_histogram(
+                road_points, x_min, x_max, y_min, y_max,
+                data.scene_config.pixels_per_m)
+        bitmap[bitmap > 0.] = 255.
+        bitmap = np.stack((bitmap, np.zeros(bitmap.shape), np.zeros(bitmap.shape)), axis=-1)
+        bitmap = bitmap.astype(np.uint8)
+        # adjust trajectory data
+        data.trajectory_data['x'] = data.trajectory_data['x'] - x_min
+        data.trajectory_data['y'] = data.trajectory_data['y'] - y_min
+        # Plot
+        fig, ax = plt.subplots(figsize=(15,15))
+        extent = (x_min, x_max, y_min, y_max)
+        ax.imshow(bitmap.swapaxes(0, 1), extent=extent, origin='lower')
+        trajdata = data.trajectory_data
+        node_ids = trajdata[trajdata['type'] == 'VEHICLE']['node_id'].unique()
+        #
+        spectral = cm.nipy_spectral(np.linspace(0, 1, len(node_ids)))
+        for idx, node_id in enumerate(node_ids):
+            car_data = trajdata[trajdata['node_id'] == node_id]
+            ax.scatter(car_data['x'] + x_min, car_data['y'] + y_min, color=spectral[idx])
+        #
+        ax.set_xlabel('x')
+        ax.set_ylabel('y')
+        ax.set_aspect('equal')
+        fig.tight_layout()
+        fn = f"{ data.scene_name.replace('/', '_') }.png"
+        fp = os.path.join(data.save_directory, fn)
+        fig.savefig(fp)
+
+
+class PlotSceneBuilder(SceneBuilder):
+    def process_scene(self, data):
+        """
+        TODO: it's not possible to extract some road lines from segmentation LIDAR
+        """
+        # Trim points above/below certain Z levels.
+        points = data.overhead_points
+        z_mask = np.logical_and(
+                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
+        points = data.overhead_points[z_mask]
+        labels = data.overhead_labels[z_mask]
+        # Select road LIDAR points.
+        road_label_mask = labels == SegmentationLabel.Road.value
+        road_points = points[road_label_mask]
         # Plot LIDAR and Trajectory points
         fig = plt.figure(figsize=(12, 12))
         ax = fig.add_subplot()
         # Plot the road LIDAR points
-        ax.scatter(points[:, 0], points[:, 1], s=2, c='blue')
+        ax.scatter(road_points[:, 0], road_points[:, 1], s=2, c='black')
         # Plot the Trajectory points
         colors = ['green', 'yellow', 'orange', 'purple', 'pink']
         for idx, node_id in enumerate(data.trajectory_data['node_id'].unique()):
