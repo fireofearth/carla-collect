@@ -28,10 +28,22 @@ SetAutopilot = carla.command.SetAutopilot
 SetVehicleLightState = carla.command.SetVehicleLightState
 FutureActor = carla.command.FutureActor
 
-from generate.data import (
+try:
+    # trajectron-plus-plus/trajectron
+    from environment import Environment, Scene, Node
+    from environment import GeometricMap, derivative_of
+except ModuleNotFoundError as e:
+    raise Exception("You forgot to link trajectron-plus-plus/trajectron")
+
+from generate import (
         get_all_vehicle_blueprints,
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
+
+from generate import SceneConfig
+from generate import TrajectronPlusPlusSceneBuilder
+from generate.scene.trajectron_scene import (
+        standardization, print_and_reset_specs, plot_trajectron_scene)
 
 class DataGenerator(object):
 
@@ -61,14 +73,26 @@ class DataGenerator(object):
             logging.info(f"Using the map {self.args.map}.")
             self.world = self.client.load_world(self.args.map)
         self.carla_map = self.world.get_map()
-        self.traffic_manager = self.client.get_trafficmanager(8000)        
+        self.traffic_manager = self.client.get_trafficmanager(8000)
         self.intersection_reader = IntersectionReader(
                 self.world, self.carla_map, debug=self.args.debug)
         
-        # filtering out controlled intersections
+        self.scenes = []
+        self.env = Environment(node_type_list=['VEHICLE'],
+                standardization=standardization)
+        self.scene_config = SceneConfig(
+                scene_interval=self.args.scene_length,
+                node_type=self.env.NodeType)
+
+        # exclude_filter : SampleLabelFilter
+        #     Filter for slopes and controlled intersections
         self.exclude_filter = SampleLabelFilter(
-                intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
-                slope_type=[ScenarioSlopeLabel.SLOPES])
+            # intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
+            slope_type=[ScenarioSlopeLabel.SLOPES]
+        )
+
+    def add_scene(self, scene):
+        self.scenes.append(scene)
 
     def __setup_actors(self, episode):
         """Setup vehicles and data collectors for an episode.
@@ -95,7 +119,7 @@ class DataGenerator(object):
         if self.args.n_vehicles < number_of_spawn_points:
             np.random.shuffle(spawn_points)
         elif self.args.n_vehicles > number_of_spawn_points:
-            msg = 'requested %d vehicles, but could only find %d spawn points'
+            msg = "requested %d vehicles, but could only find %d spawn points"
             logging.warning(msg, self.args.n_vehicles, number_of_spawn_points)
             self.args.n_vehicles = number_of_spawn_points
 
@@ -131,25 +155,30 @@ class DataGenerator(object):
                 vehicle_ids.append(response.actor_id)
         
         # Add data collector to a handful of vehicles
-        vehicles_ids_to_data_collect = vehicle_ids[
-                :self.args.n_data_collectors]
+        vehicles = self.world.get_actors(vehicle_ids)
+        vehicles = dict(zip(vehicle_ids, vehicles))
+        vehicles_ids_to_data_collect = vehicle_ids[:self.args.n_data_collectors]
+
+        
         for idx, vehicle_id in enumerate(vehicles_ids_to_data_collect):
             vehicle_ids_to_watch = vehicle_ids[:idx] + vehicle_ids[idx + 1:]
             vehicle = self.world.get_actor(vehicle_id)
             data_collector = DataCollector(vehicle,
                     self.intersection_reader,
-                    save_directory=self.args.save_directory,
+                    vehicle_ids_to_watch,
+                    scene_builder_cls=TrajectronPlusPlusSceneBuilder,
+                    scene_config=self.scene_config,
+                    save_frequency=self.args.save_frequency,
                     n_burn_frames=self.args.n_burn_frames,
-                    exclude_samples=self.exclude_filter,
                     episode=episode,
-                    should_augment=self.args.augment,
-                    n_augments=self.args.n_augments,
+                    exclude_samples=self.exclude_filter,
+                    callback=self.add_scene,
                     debug=self.args.debug)
             data_collector.start_sensor()
-            data_collector.set_vehicles(vehicle_ids_to_watch)
             data_collectors.append(data_collector)
 
-        logging.info(f"spawned {len(vehicle_ids)} vehicles")
+        logging.info(f"Spawned {len(vehicle_ids)} vehicles")
+        logging.info(f"Spawned {len(data_collectors)} data collectors")
         return vehicle_ids, data_collectors
     
     def __run_episode(self, episode):
@@ -214,6 +243,10 @@ class DataGenerator(object):
             logging.info("Reverting to original settings.")
             if original_settings:
                 self.world.apply_settings(original_settings)
+        
+        print_and_reset_specs()
+        for scene in self.scenes:
+            plot_trajectron_scene(self.args.save_directory, scene)
 
 
 # ==============================================================================
@@ -294,16 +327,15 @@ def main():
         type=int,
         help='number of data collectos to add on vehicles (default: 20)')
     argparser.add_argument(
-        '--augment-data',
-        action='store_true',
-        dest='augment',
-        help='Enable data augmentation')
+        '--save-frequency',
+        metavar='S',
+        default=26,
+        type=int)
     argparser.add_argument(
-        '--n-augments',
-        default=1,
-        type=int,
-        help=("Number of augmentations to create from each sample. "
-        "If --n-aguments=5 then a random number from 1 to 5 augmentations will be produced from each sample"))
+        '--scene-length',
+        metavar='L',
+        default=25,
+        type=int)
     argparser.add_argument(
         '--hybrid',
         action='store_true',
