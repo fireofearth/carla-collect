@@ -77,9 +77,6 @@ class DataGenerator(object):
         self.intersection_reader = IntersectionReader(
                 self.world, self.carla_map, debug=self.args.debug)
         
-        self.scenes = []
-        self.env = Environment(node_type_list=['VEHICLE'],
-                standardization=standardization)
         self.scene_config = SceneConfig(
                 scene_interval=self.args.scene_length,
                 node_type=self.env.NodeType)
@@ -90,6 +87,14 @@ class DataGenerator(object):
             # intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
             slope_type=[ScenarioSlopeLabel.SLOPES]
         )
+        
+        self.env = Environment(node_type_list=['VEHICLE'],
+                standardization=standardization)
+        attention_radius = dict()
+        attention_radius[(self.env.NodeType.VEHICLE, self.env.NodeType.VEHICLE)] = 30.0
+        self.env.attention_radius = attention_radius
+        self.env.robot_type = self.env.NodeType.VEHICLE
+        self.scenes = []
 
     def add_scene(self, scene):
         self.scenes.append(scene)
