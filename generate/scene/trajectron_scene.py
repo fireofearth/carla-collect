@@ -5,6 +5,7 @@ import sys
 import os
 import logging
 import numpy as np
+import scipy
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
@@ -309,8 +310,12 @@ def plot_trajectron_scene(savedir, scene):
     fig.savefig(fp)
 
 
+# scipy.spatial.distance_matrix()
+
+
 class TrajectronPlusPlusSceneBuilder(SceneBuilder):
     def process_scene(self, data):
+        traj_data = data.trajectory_data
         # Trim points above/below certain Z levels.
         points = data.overhead_points
         z_mask = np.logical_and(
@@ -320,8 +325,12 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         # Select road LIDAR points.
         road_label_mask = labels == SegmentationLabel.Road.value
         road_points = points[road_label_mask]
+        # Remove trajectory points that are far from road LIDAR points.
+        X = traj_data[['x', 'y']].values
+        D = scipy.spatial.distance_matrix(X, road_points[:, :2])
+        traj_mask = np.min(D, axis=1) < 3.
+        traj_data = traj_data[traj_mask]
         # Get extent and other data
-        traj_data = data.trajectory_data
         comp_key = np.logical_and(traj_data['node_id'] == 'ego', traj_data['frame_id'] == 0)
         s = traj_data[comp_key].iloc[0]
         ego_initx, ego_inity = s['x'], s['y']

@@ -36,8 +36,9 @@ class SceneConfig(object):
 
 class SceneBuilderData(object):
     def __init__(self, save_directory, scene_name, map_name, fixed_delta_seconds,
-            trajectory_data, overhead_points,
-            overhead_labels, overhead_ids, sensor_loc_at_t0, first_frame, scene_config):
+            trajectory_data, overhead_points, overhead_labels, overhead_ids,
+            vehicle_visibility,
+            sensor_loc_at_t0, first_frame, scene_config):
         self.save_directory = save_directory
         self.scene_name = scene_name
         self.map_name = map_name
@@ -46,6 +47,7 @@ class SceneBuilderData(object):
         self.overhead_points = overhead_points
         self.overhead_labels = overhead_labels
         self.overhead_ids = overhead_ids
+        self.vehicle_visibility = vehicle_visibility
         self.sensor_loc_at_t0 = sensor_loc_at_t0
         self.first_frame = first_frame
         self.scene_config = scene_config
@@ -108,10 +110,10 @@ class SceneBuilder(ABC):
         self.__finished_capture_trajectory = False
         self.__finished_lidar_trajectory = False
 
-        # __other_vehicle_visibility : map of (int, set of int)
+        # __vehicle_visibility : map of (int, set of int)
         #    IDs of vehicles visible to the ego vehicle by frame ID.
         #    Vehicles are visible when then are hit by semantic LIDAR.
-        self.__other_vehicle_visibility = { }
+        self.__vehicle_visibility = { }
 
         self.__radius = scene_radius
         # __sensor_loc_at_t0 : carla.Transform
@@ -219,7 +221,7 @@ class SceneBuilder(ABC):
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             vehicle_label_mask = labels == SegmentationLabel.Vehicle.value
             object_ids = object_ids[vehicle_label_mask]
-            self.__other_vehicle_visibility[frame_id] = set(object_ids)
+            self.__vehicle_visibility[frame_id] = set(object_ids)
 
     def __add_1_to_points(self, points):
         return np.pad(points, [(0, 0), (0, 1)],
@@ -267,21 +269,18 @@ class SceneBuilder(ABC):
             lidar_measurement = self.__lidar_feeds[frame]
             self.__process_lidar_snapshot(lidar_measurement)
         # Finish Trajectory raw data
-        self.__trajectory_data.sort_values('frame_id', inplace=True)
-        for l in self.__other_vehicle_visibility.values():
+        for l in self.__vehicle_visibility.values():
             l.add('ego')
-        comp_keys = pd.DataFrame.from_dict(self.__other_vehicle_visibility, orient='index')
-        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
-        comp_keys.columns = ['frame_id', 'node_id']
-        self.__trajectory_data = pd.merge(self.__trajectory_data, comp_keys,
-                how='inner', on=['frame_id', 'node_id'])
+        self.__trajectory_data.sort_values('frame_id', inplace=True)
         # Return scene raw data
         return SceneBuilderData(self.__save_directory, self.__scene_name, 
                 self.__map_reader.map_name,
                 self.__world.get_settings().fixed_delta_seconds,
                 self.__trajectory_data,
-                self.__overhead_points, self.__overhead_labels, self.__overhead_ids,
-                self.__sensor_loc_at_t0, self.__first_frame, self.__scene_config)
+                self.__overhead_points, self.__overhead_labels,
+                self.__overhead_ids,
+                self.__vehicle_visibility, self.__sensor_loc_at_t0,
+                self.__first_frame, self.__scene_config)
 
     def __remove_scene_builder(self):
         self.__data_collector.remove_scene_builder(self.__first_frame)
@@ -341,6 +340,12 @@ def round_to_int(x):
 
 class BitmapSceneBuilder(SceneBuilder):
     def process_scene(self, data):
+        # Remove trajectory points of hidden vehicles.
+        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
+        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
+        comp_keys.columns = ['frame_id', 'node_id']
+        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
+                how='inner', on=['frame_id', 'node_id'])
         # Trim points above/below certain Z levels.
         points = data.overhead_points
         z_mask = np.logical_and(
@@ -392,6 +397,12 @@ class PlotSceneBuilder(SceneBuilder):
         """
         TODO: it's not possible to extract some road lines from segmentation LIDAR
         """
+        # Remove trajectory points of hidden vehicles.
+        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
+        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
+        comp_keys.columns = ['frame_id', 'node_id']
+        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
+                how='inner', on=['frame_id', 'node_id'])
         # Trim points above/below certain Z levels.
         points = data.overhead_points
         z_mask = np.logical_and(

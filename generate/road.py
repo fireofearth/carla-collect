@@ -76,6 +76,8 @@ HERO_DEFAULT_SCALE = 1.0
 
 PIXELS_AHEAD_VEHICLE = 150
 
+# waypoints = carla_map.generate_waypoints(2)
+
 class MapImage(object):
     """Class encharged of rendering a 2D image from top view of a carla world. Please note that a cache system is used, so if the OpenDrive content
     of a Carla town has not changed, it will read and use the stored image if it was rendered in a previous execution"""

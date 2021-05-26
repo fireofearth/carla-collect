@@ -77,6 +77,14 @@ class DataGenerator(object):
         self.intersection_reader = IntersectionReader(
                 self.world, self.carla_map, debug=self.args.debug)
         
+        self.env = Environment(node_type_list=['VEHICLE'],
+                standardization=standardization)
+        attention_radius = dict()
+        attention_radius[(self.env.NodeType.VEHICLE, self.env.NodeType.VEHICLE)] = 30.0
+        self.env.attention_radius = attention_radius
+        self.env.robot_type = self.env.NodeType.VEHICLE
+        self.scenes = []
+
         self.scene_config = SceneConfig(
                 scene_interval=self.args.scene_length,
                 node_type=self.env.NodeType)
@@ -87,14 +95,6 @@ class DataGenerator(object):
             # intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
             slope_type=[ScenarioSlopeLabel.SLOPES]
         )
-        
-        self.env = Environment(node_type_list=['VEHICLE'],
-                standardization=standardization)
-        attention_radius = dict()
-        attention_radius[(self.env.NodeType.VEHICLE, self.env.NodeType.VEHICLE)] = 30.0
-        self.env.attention_radius = attention_radius
-        self.env.robot_type = self.env.NodeType.VEHICLE
-        self.scenes = []
 
     def add_scene(self, scene):
         self.scenes.append(scene)
@@ -250,8 +250,25 @@ class DataGenerator(object):
                 self.world.apply_settings(original_settings)
         
         print_and_reset_specs()
+        
+        logging.info("Plotting the scenes.")
         for scene in self.scenes:
             plot_trajectron_scene(self.args.save_directory, scene)
+        
+        # if len(scenes) > 0:
+        #     logging.info("No scenes colllected. Closing.")
+        #     return
+
+        # logging.info("Saving Dataset.")
+        # self.env.scenes = scenes
+        # os.makedirs(self.args.save_directory, exist_ok=True)
+        # filename = "{}_{}.pkl".format(
+        #         datetime.datetime.now().strftime("%Y%m%d_%H-%M-%S"),
+        #         self.args.save_label)
+        # savepath = os.path.join(self.args.save_directory, filename)
+        # with open(data_dict_path, 'wb') as f:
+        #     dill.dump(self.env, f, protocol=dill.HIGHEST_PROTOCOL)
+        # logging.info("Finished run.")
 
 
 # ==============================================================================
@@ -291,7 +308,13 @@ def main():
         type=dir_path,
         default='out',
         dest='save_directory',
-        help='Directory to save the samples.')
+        help='Directory to save the dataset.')
+    argparser.add_argument(
+        '--label',
+        type=str,
+        default='dataset',
+        dest='save_label',
+        help='Label of dataset.')
     argparser.add_argument(
         '-s', '--seed',
         help='Set seed for repeating executions (default: None)',
