@@ -20,6 +20,7 @@ import re
 import sys
 import time
 import numpy as np
+import dill
 
 import carla
 from carla import VehicleLightState as vls
@@ -240,7 +241,8 @@ class DataGenerator(object):
             if self.args.debug:
                 self.intersection_reader.debug_display()
 
-            for episode in range(self.n_episodes):
+            for episode in range(self.args.start_at_episode,
+                    self.args.start_at_episode + self.n_episodes):
                 logging.info(f"Running episode {episode}.")
                 self.__run_episode(episode)
 
@@ -249,26 +251,31 @@ class DataGenerator(object):
             if original_settings:
                 self.world.apply_settings(original_settings)
         
+        print(f"Generated { len(self.scenes) } scenes.")
         print_and_reset_specs()
-        
-        logging.info("Plotting the scenes.")
-        for scene in self.scenes:
+
+        logging.info("Plotting some scenes.")
+        if len(self.scenes) > 6:
+            scenes_to_plot = random.choices(self.scenes, k=6)
+        else:
+            scenes_to_plot = self.scenes
+        for scene in scenes_to_plot:
             plot_trajectron_scene(self.args.save_directory, scene)
         
-        # if len(scenes) > 0:
-        #     logging.info("No scenes colllected. Closing.")
-        #     return
+        if len(self.scenes) == 0:
+            logging.info("No scenes collected. Closing.")
+            return
 
-        # logging.info("Saving Dataset.")
-        # self.env.scenes = scenes
-        # os.makedirs(self.args.save_directory, exist_ok=True)
-        # filename = "{}_{}.pkl".format(
-        #         datetime.datetime.now().strftime("%Y%m%d_%H-%M-%S"),
-        #         self.args.save_label)
-        # savepath = os.path.join(self.args.save_directory, filename)
-        # with open(data_dict_path, 'wb') as f:
-        #     dill.dump(self.env, f, protocol=dill.HIGHEST_PROTOCOL)
-        # logging.info("Finished run.")
+        self.env.scenes = self.scenes
+        os.makedirs(self.args.save_directory, exist_ok=True)
+        filename = "{}_{}.pkl".format(
+                datetime.datetime.now().strftime("%Y%m%d_%H-%M-%S"),
+                self.args.save_label)
+        savepath = os.path.join(self.args.save_directory, filename)
+        logging.info(f"Saving dataset as {savepath}")
+        with open(savepath, 'wb') as f:
+            dill.dump(self.env, f, protocol=dill.HIGHEST_PROTOCOL)
+        logging.info("Finished run.")
 
 
 # ==============================================================================
@@ -327,13 +334,19 @@ def main():
     argparser.add_argument(
         '-e', '--n-episodes',
         metavar='E',
-        default=12,
+        default=5,
         type=int,
-        help='Number of episodes to run (default: 10)')
+        help='Number of episodes to run (default: 5)')
+    argparser.add_argument(
+        '--start-at-episode',
+        metavar='S',
+        default=0,
+        type=int,
+        help='the episode number to start indexing at (default: 0)')
     argparser.add_argument(
         '-f', '--n-frames',
         metavar='F',
-        default=1000,
+        default=500,
         type=int,
         help='Number of frames in each episode to capture (default: 1000)')
     argparser.add_argument(

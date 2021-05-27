@@ -77,6 +77,61 @@ HERO_DEFAULT_SCALE = 1.0
 PIXELS_AHEAD_VEHICLE = 150
 
 # waypoints = carla_map.generate_waypoints(2)
+topology = carla_map.get_topology()
+index = 0
+topology = [x[index] for x in carla_topology]
+topology = sorted(topology, key=lambda w: w.transform.location.z)
+set_waypoints = []
+for waypoint in topology:
+    waypoints = [waypoint]
+    # Generate waypoints of a road id. Stop when road id differs
+    nxt = waypoint.next(precision)
+    if len(nxt) > 0:
+        nxt = nxt[0]
+        while nxt.road_id == waypoint.road_id:
+            waypoints.append(nxt)
+            nxt = nxt.next(precision)
+            if len(nxt) > 0:
+                nxt = nxt[0]
+            else:
+                break
+    set_waypoints.append(waypoints)
+
+    for w in waypoints:
+        # Classify lane types until there are no waypoints by going left
+        l = w.get_left_lane()
+        while l and l.lane_type != carla.LaneType.Driving:
+
+            if l.lane_type == carla.LaneType.Shoulder:
+                shoulder[0].append(l)
+
+            if l.lane_type == carla.LaneType.Parking:
+                parking[0].append(l)
+
+            if l.lane_type == carla.LaneType.Sidewalk:
+                sidewalk[0].append(l)
+
+            l = l.get_left_lane()
+
+        # Classify lane types until there are no waypoints by going right
+        r = w.get_right_lane()
+        while r and r.lane_type != carla.LaneType.Driving:
+
+            if r.lane_type == carla.LaneType.Shoulder:
+                shoulder[1].append(r)
+
+            if r.lane_type == carla.LaneType.Parking:
+                parking[1].append(r)
+
+            if r.lane_type == carla.LaneType.Sidewalk:
+                sidewalk[1].append(r)
+
+            r = r.get_right_lane()
+
+    draw_lane(map_surface, shoulder, SHOULDER_COLOR)
+    draw_lane(map_surface, parking, PARKING_COLOR)
+    draw_lane(map_surface, sidewalk, SIDEWALK_COLOR)
+
 
 class MapImage(object):
     """Class encharged of rendering a 2D image from top view of a carla world. Please note that a cache system is used, so if the OpenDrive content

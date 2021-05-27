@@ -1,5 +1,6 @@
 .vscode/
 out/
+plots/
 __pycache__/
 cache/
 .ipynb_checkpoints/

@@ -310,12 +310,18 @@ def plot_trajectron_scene(savedir, scene):
     fig.savefig(fp)
 
 
-# scipy.spatial.distance_matrix()
+class TrajectronPlusPlusSceneBuilderV2(SceneBuilder):
+    DISTANCE_FROM_ROAD = 10.
 
-
-class TrajectronPlusPlusSceneBuilder(SceneBuilder):
     def process_scene(self, data):
-        traj_data = data.trajectory_data
+        # Remove trajectory points of hidden vehicles.
+        # This method introduces occlusion to trajectories
+        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
+        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
+        comp_keys.columns = ['frame_id', 'node_id']
+        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
+                how='inner', on=['frame_id', 'node_id'])
+
         # Trim points above/below certain Z levels.
         points = data.overhead_points
         z_mask = np.logical_and(
@@ -325,12 +331,9 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         # Select road LIDAR points.
         road_label_mask = labels == SegmentationLabel.Road.value
         road_points = points[road_label_mask]
-        # Remove trajectory points that are far from road LIDAR points.
-        X = traj_data[['x', 'y']].values
-        D = scipy.spatial.distance_matrix(X, road_points[:, :2])
-        traj_mask = np.min(D, axis=1) < 3.
-        traj_data = traj_data[traj_mask]
+        
         # Get extent and other data
+        traj_data = data.trajectory_data
         comp_key = np.logical_and(traj_data['node_id'] == 'ego', traj_data['frame_id'] == 0)
         s = traj_data[comp_key].iloc[0]
         ego_initx, ego_inity = s['x'], s['y']
@@ -385,5 +388,104 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         type_map['VISUALIZATION'] = GeometricMap(data=bitmap,
                 homography=homography, description=', '.join(layer_names))
         scene.map = type_map
+        scene_config = data.scene_config
         del bitmap
-        return process_trajectron_scene(scene, traj_data, max_timesteps, data.scene_config)
+        del points
+        del labels
+        del road_points
+        del data
+        return process_trajectron_scene(scene, traj_data, max_timesteps, scene_config)
+
+
+class TrajectronPlusPlusSceneBuilder(SceneBuilder):
+    DISTANCE_FROM_ROAD = 10.
+
+    def process_scene(self, data):
+        # Remove trajectory points of hidden vehicles.
+        # This method introduces occlusion to trajectories
+        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
+        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
+        comp_keys.columns = ['frame_id', 'node_id']
+        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
+                how='inner', on=['frame_id', 'node_id'])
+
+        # Trim points above/below certain Z levels.
+        points = data.overhead_points
+        z_mask = np.logical_and(
+                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
+        points = data.overhead_points[z_mask]
+        labels = data.overhead_labels[z_mask]
+        # Select road LIDAR points.
+        road_label_mask = labels == SegmentationLabel.Road.value
+        road_points = points[road_label_mask]
+
+        # Remove trajectory points that are far from road LIDAR points.
+        # This method is just too computationally expensive
+        # X = traj_data[['x', 'y']].values
+        # D = scipy.spatial.distance_matrix(X, road_points[:, :2])
+        # traj_mask = np.min(D, axis=1) < self.DISTANCE_FROM_ROAD
+        # traj_data = traj_data[np.logical_or(traj_mask, traj_data['node_id'] == 'ego')]
+        
+        # Get extent and other data
+        traj_data = data.trajectory_data
+        comp_key = np.logical_and(traj_data['node_id'] == 'ego', traj_data['frame_id'] == 0)
+        s = traj_data[comp_key].iloc[0]
+        ego_initx, ego_inity = s['x'], s['y']
+        max_timesteps = traj_data['frame_id'].max()
+        x_min = round_to_int(traj_data['x'].min() - 50)
+        x_max = round_to_int(traj_data['x'].max() + 50)
+        y_min = round_to_int(traj_data['y'].min() - 50)
+        y_max = round_to_int(traj_data['y'].max() + 50)
+        # Form bitmap
+        bitmap = points_to_2d_histogram(
+                road_points, x_min, x_max, y_min, y_max,
+                data.scene_config.pixels_per_m)
+        bitmap[bitmap > 0.] = 255.
+        bitmap = np.stack((bitmap, np.zeros(bitmap.shape), np.zeros(bitmap.shape)), axis=0)
+        bitmap = bitmap.astype(np.uint8)
+        # adjust trajectory data
+        traj_data['x'] = traj_data['x'] - x_min
+        traj_data['y'] = traj_data['y'] - y_min
+        # Create scene
+        dt = data.fixed_delta_seconds * data.scene_config.record_interval
+        scene = Scene(timesteps=max_timesteps + 1, dt=dt,
+                name=data.scene_name, aug_func=augment)
+        scene.ego_initx = ego_initx
+        scene.ego_inity = ego_inity
+        scene.x_min = x_min
+        scene.y_min = y_min
+        scene.x_max = x_max
+        scene.y_max = y_max
+
+        type_map = dict()
+        x_size = x_max - x_min
+        y_size = y_max - y_min
+
+        scene.map_name = data.map_name
+        scene.x_size = x_size
+        scene.y_size = y_size
+
+        patch_box = (x_min + 0.5 * (x_max - x_min), y_min + 0.5 * (y_max - y_min), y_size, x_size)
+        patch_angle = 0
+        canvas_size = (np.round(3 * y_size).astype(int), np.round(3 * x_size).astype(int))
+        homography = np.array([[3., 0., 0.], [0., 3., 0.], [0., 0., 3.]])
+        layer_names = ['drivable_area']
+
+        scene.patch_box = patch_box
+        scene.patch_angle = patch_angle
+        scene.canvas_size = canvas_size
+        scene.homography = homography
+        scene.layer_names = layer_names
+
+        type_map['VEHICLE']       = GeometricMap(data=bitmap,
+                homography=homography, description=', '.join(layer_names))
+        type_map['VISUALIZATION'] = GeometricMap(data=bitmap,
+                homography=homography, description=', '.join(layer_names))
+        scene.map = type_map
+        scene_config = data.scene_config
+        del bitmap
+        del points
+        del labels
+        del road_points
+        del data
+        return process_trajectron_scene(scene, traj_data, max_timesteps, scene_config)
