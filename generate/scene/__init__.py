@@ -1,3 +1,5 @@
-from .scene import SceneBuilder, SceneConfig
+from .scene import SceneBuilder, SceneConfig, SceneBuilderData
 from .trajectron_scene import TrajectronPlusPlusSceneBuilder
-from .scene import BitmapSceneBuilder, PlotSceneBuilder
+from .misc_scene import (BitmapSceneBuilder, PlotSceneBuilder,
+        DistanceTransformSceneBuilder,
+        DistanceTransformSelectSceneBuilder)

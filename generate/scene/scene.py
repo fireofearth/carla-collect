@@ -5,6 +5,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+import scipy.ndimage
 import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
@@ -337,104 +338,3 @@ def points_to_2d_histogram(points, x_min, x_max, y_min, y_max, pixels_per_m):
 
 def round_to_int(x):
     return np.int(np.round(x))
-
-class BitmapSceneBuilder(SceneBuilder):
-    def process_scene(self, data):
-        # Remove trajectory points of hidden vehicles.
-        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
-        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
-        comp_keys.columns = ['frame_id', 'node_id']
-        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
-                how='inner', on=['frame_id', 'node_id'])
-        # Trim points above/below certain Z levels.
-        points = data.overhead_points
-        z_mask = np.logical_and(
-                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
-        points = data.overhead_points[z_mask]
-        labels = data.overhead_labels[z_mask]
-        # Select road LIDAR points.
-        road_label_mask = labels == SegmentationLabel.Road.value
-        road_points = points[road_label_mask]
-        # Get extent
-        x_min = round_to_int(data.trajectory_data['x'].min() - 50)
-        x_max = round_to_int(data.trajectory_data['x'].max() + 50)
-        y_min = round_to_int(data.trajectory_data['y'].min() - 50)
-        y_max = round_to_int(data.trajectory_data['y'].max() + 50)
-        # Form bitmap
-        bitmap = points_to_2d_histogram(
-                road_points, x_min, x_max, y_min, y_max,
-                data.scene_config.pixels_per_m)
-        bitmap[bitmap > 0.] = 255.
-        bitmap = np.stack((bitmap, np.zeros(bitmap.shape), np.zeros(bitmap.shape)), axis=-1)
-        bitmap = bitmap.astype(np.uint8)
-        # adjust trajectory data
-        data.trajectory_data['x'] = data.trajectory_data['x'] - x_min
-        data.trajectory_data['y'] = data.trajectory_data['y'] - y_min
-        # Plot the data
-        fig, ax = plt.subplots(figsize=(15,15))
-        extent = (x_min, x_max, y_min, y_max)
-        ax.imshow(bitmap.swapaxes(0, 1), extent=extent, origin='lower')
-        trajdata = data.trajectory_data
-        node_ids = trajdata[trajdata['type'] == 'VEHICLE']['node_id'].unique()
-        #
-        spectral = cm.nipy_spectral(np.linspace(0, 1, len(node_ids)))
-        for idx, node_id in enumerate(node_ids):
-            car_data = trajdata[trajdata['node_id'] == node_id]
-            ax.scatter(car_data['x'] + x_min, car_data['y'] + y_min, color=spectral[idx])
-        #
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_aspect('equal')
-        fig.tight_layout()
-        fn = f"{ data.scene_name.replace('/', '_') }.png"
-        fp = os.path.join(data.save_directory, fn)
-        fig.savefig(fp)
-        return None
-
-
-class PlotSceneBuilder(SceneBuilder):
-    def process_scene(self, data):
-        """
-        TODO: it's not possible to extract some road lines from segmentation LIDAR
-        """
-        # Remove trajectory points of hidden vehicles.
-        comp_keys = pd.DataFrame.from_dict(data.vehicle_visibility, orient='index')
-        comp_keys = comp_keys.stack().to_frame().reset_index().drop('level_1', axis=1)
-        comp_keys.columns = ['frame_id', 'node_id']
-        data.trajectory_data = pd.merge(data.trajectory_data, comp_keys,
-                how='inner', on=['frame_id', 'node_id'])
-        # Trim points above/below certain Z levels.
-        points = data.overhead_points
-        z_mask = np.logical_and(
-                points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
-        points = data.overhead_points[z_mask]
-        labels = data.overhead_labels[z_mask]
-        # Select road LIDAR points.
-        road_label_mask = labels == SegmentationLabel.Road.value
-        road_points = points[road_label_mask]
-        # Plot LIDAR and Trajectory points
-        fig = plt.figure(figsize=(12, 12))
-        ax = fig.add_subplot()
-        # Plot the road LIDAR points
-        ax.scatter(road_points[:, 0], road_points[:, 1], s=2, c='black')
-        # Plot the Trajectory points
-        colors = ['green', 'yellow', 'orange', 'purple', 'pink']
-        for idx, node_id in enumerate(data.trajectory_data['node_id'].unique()):
-            trajectory_data = data.trajectory_data
-            trajectory_data = trajectory_data[trajectory_data['node_id'] == node_id]
-            color = colors[idx % 5] if node_id != 'ego' else 'red'
-            ax.scatter(trajectory_data['x'], trajectory_data['y'], s=2, c=color)
-
-            # Plot LIDAR points color coded by other vehicles
-            # car_mask = data.overhead_ids == node_id
-            # points = data.overhead_points[car_mask]
-            # ax.scatter(points[:, 0], points[:, 1], s=2, c=color)
-
-        ax.set_xlabel('x')
-        ax.set_ylabel('y')
-        ax.set_aspect('equal')
-        fig.tight_layout()
-        fn = f"{ data.scene_name.replace('/', '_') }.png"
-        fp = os.path.join(data.save_directory, fn)
-        fig.savefig(fp)
-        return None

@@ -5,9 +5,12 @@ import carla
 from generate import get_all_vehicle_blueprints
 from generate import DataCollector
 from generate import NaiveMapQuerier, SceneConfig
-from generate import BitmapSceneBuilder
+from generate.scene import (
+        BitmapSceneBuilder,
+        DistanceTransformSceneBuilder,
+        DistanceTransformSelectSceneBuilder)
 
-TESTSceneBuilder=BitmapSceneBuilder
+TESTSceneBuilder=DistanceTransformSceneBuilder
 
 """
 pytest --log-cli-level=INFO -vv -s
