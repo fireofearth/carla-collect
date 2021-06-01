@@ -38,7 +38,7 @@ class SceneConfig(object):
 class SceneBuilderData(object):
     def __init__(self, save_directory, scene_name, map_name, fixed_delta_seconds,
             trajectory_data, overhead_points, overhead_labels, overhead_ids,
-            vehicle_visibility,
+            map_data, vehicle_visibility,
             sensor_loc_at_t0, first_frame, scene_config):
         self.save_directory = save_directory
         self.scene_name = scene_name
@@ -48,6 +48,7 @@ class SceneBuilderData(object):
         self.overhead_points = overhead_points
         self.overhead_labels = overhead_labels
         self.overhead_ids = overhead_ids
+        self.map_data = map_data
         self.vehicle_visibility = vehicle_visibility
         self.sensor_loc_at_t0 = sensor_loc_at_t0
         self.first_frame = first_frame
@@ -94,13 +95,16 @@ class SceneBuilder(ABC):
         self.__other_vehicles = other_vehicles
         # __lidar_feeds : collections.OrderedDict
         self.__lidar_feeds = lidar_feeds
+        # __scene_name : str
         self.__scene_name = scene_name
         # __first_frame : int
         self.__first_frame = first_frame
+        # __world : carla.World
         self.__world = self.__ego_vehicle.get_world()
         self.__save_directory = save_directory
-        
+        # __exclude_samples :  SampleLabelFilter
         self.__exclude_samples = exclude_samples
+        # __callback : function
         self.__callback = callback
         self.__debug = debug
 
@@ -280,6 +284,7 @@ class SceneBuilder(ABC):
                 self.__trajectory_data,
                 self.__overhead_points, self.__overhead_labels,
                 self.__overhead_ids,
+                self.__map_reader.map_data,
                 self.__vehicle_visibility, self.__sensor_loc_at_t0,
                 self.__first_frame, self.__scene_config)
 

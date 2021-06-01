@@ -30,7 +30,6 @@ from .label import SegmentationLabel
 
 from .scene import SceneBuilder, SceneConfig
 from .scene import TrajectronPlusPlusSceneBuilder
-from .scene import BitmapSceneBuilder, PlotSceneBuilder
 
 def get_all_vehicle_blueprints(world):
     blueprints = world.get_blueprint_library().filter('vehicle.*')
@@ -52,11 +51,10 @@ def create_semantic_lidar_blueprint(world):
     bp_library = world.get_blueprint_library()
     lidar_bp = bp_library.find('sensor.lidar.ray_cast_semantic')
     lidar_bp.set_attribute('channels', '128')
-    lidar_bp.set_attribute('range', '240')
-    lidar_bp.set_attribute('points_per_second', '2621440')
-    lidar_bp.set_attribute('points_per_second', '300000')
+    lidar_bp.set_attribute('range', '70')
+    lidar_bp.set_attribute('points_per_second', '100000')
     lidar_bp.set_attribute('rotation_frequency', '10.0')
-    lidar_bp.set_attribute('upper_fov', '5.0')
+    lidar_bp.set_attribute('upper_fov', '0.0')
     lidar_bp.set_attribute('lower_fov', '-20.0')
     return lidar_bp
 
@@ -77,7 +75,7 @@ class DataCollector(object):
             map_reader,
             other_vehicle_ids,
             scene_config=SceneConfig(),
-            scene_builder_cls=PlotSceneBuilder,
+            scene_builder_cls=TrajectronPlusPlusSceneBuilder,
             save_frequency=35,
             save_directory='out',
             n_burn_frames=60,

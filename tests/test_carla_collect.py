@@ -5,12 +5,13 @@ import carla
 from generate import get_all_vehicle_blueprints
 from generate import DataCollector
 from generate import NaiveMapQuerier, SceneConfig
-from generate.scene import (
+from generate.scene.misc_scene import (
         BitmapSceneBuilder,
         DistanceTransformSceneBuilder,
-        DistanceTransformSelectSceneBuilder)
+        DistanceTransformSelectSceneBuilder,
+        DTSelectWithMapSceneBuilder)
 
-TESTSceneBuilder=DistanceTransformSceneBuilder
+TESTSceneBuilder=DTSelectWithMapSceneBuilder
 
 """
 pytest --log-cli-level=INFO -vv -s
@@ -87,6 +88,62 @@ def test_5_npcs(carla_Town03_synchronous):
         # Setup data collector
         map_reader = NaiveMapQuerier(world, carla_map, debug=True)
         scene_config = SceneConfig(scene_interval=scene_interval, record_interval=record_interval)
+        data_collector = DataCollector(ego_vehicle,
+                map_reader, other_vehicle_ids,
+                scene_builder_cls=TESTSceneBuilder,
+                scene_config=scene_config,
+                save_frequency=save_frequency,
+                n_burn_frames=n_burn_frames,
+                debug=True)
+        data_collector.start_sensor()
+        assert data_collector.sensor_is_listening
+
+        # Run simulation for X steps
+        for idx in range(n_burn_frames + record_interval*(save_frequency - 1)):
+            frame = world.tick()
+            data_collector.capture_step(frame)
+
+    finally:
+        if data_collector:
+            data_collector.destroy()
+        if ego_vehicle:
+            ego_vehicle.destroy()
+        for other_vehicle in other_vehicles:
+            other_vehicle.destroy()
+
+def test_not_moving(carla_Town03_synchronous):
+    client, world, carla_map, traffic_manager = carla_Town03_synchronous
+    ego_vehicle = None
+    other_vehicles = []
+    data_collector = None
+
+    n_burn_frames = 60
+    save_frequency = 30
+    record_interval = 5
+    scene_interval = 25
+    try:
+        # Mock vehicles
+        spawn_points = carla_map.get_spawn_points()
+        blueprint = world.get_blueprint_library().find('vehicle.audi.a2')
+        spawn_point = spawn_points[29]
+        ego_vehicle = world.spawn_actor(blueprint, spawn_point)
+        ego_vehicle.set_autopilot(True, traffic_manager.get_port())
+
+        other_vehicle_ids = []
+        blueprints = get_all_vehicle_blueprints(world)
+        for idx in [155, 157, 194, 36, 108, 32]:
+            blueprint = np.random.choice(blueprints)
+            spawn_point = spawn_points[idx]
+            other_vehicle = world.spawn_actor(blueprint, spawn_point)
+            other_vehicle.set_autopilot(True, traffic_manager.get_port())
+            other_vehicles.append(other_vehicle)
+            other_vehicle_ids.append(other_vehicle.id)
+
+        # Setup data collector
+        map_reader = NaiveMapQuerier(world, carla_map, debug=True)
+        scene_config = SceneConfig(
+                scene_interval=scene_interval,
+                record_interval=record_interval)
         data_collector = DataCollector(ego_vehicle,
                 map_reader, other_vehicle_ids,
                 scene_builder_cls=TESTSceneBuilder,

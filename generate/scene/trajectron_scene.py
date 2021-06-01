@@ -6,6 +6,7 @@ import os
 import logging
 import numpy as np
 import scipy
+import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
@@ -280,7 +281,8 @@ def process_trajectron_scene(scene, data, max_timesteps, scene_config):
                          ('acceleration', 'y'): ay}
             node_data = pd.DataFrame(data_dict, columns=data_columns_pedestrian)
 
-        node = Node(node_type=node_df.iloc[0]['type'], node_id=node_id, data=node_data, frequency_multiplier=node_frequency_multiplier)
+        node = Node(node_type=node_df.iloc[0]['type'], node_id=node_id,
+                data=node_data, frequency_multiplier=node_frequency_multiplier)
         node.first_timestep = node_df['frame_id'].iloc[0]
         if node_df.iloc[0]['robot'] == True:
             node.is_robot = True
@@ -311,10 +313,10 @@ def plot_trajectron_scene(savedir, scene):
 
 
 class TrajectronPlusPlusSceneBuilder(SceneBuilder):
-    DISTANCE_FROM_ROAD = 10.
+    DISTANCE_FROM_ROAD = 20.
 
-    def process_scene(self, data):
-        # Get extent and other data
+    def __process_carla_scene(self, data):
+        # Get extent and sizing from trajectory data.
         traj_data = data.trajectory_data
         comp_key = np.logical_and(traj_data['node_id'] == 'ego', traj_data['frame_id'] == 0)
         s = traj_data[comp_key].iloc[0]
@@ -326,36 +328,53 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         y_max = round_to_int(traj_data['y'].max() + 50)
         x_size = x_max - x_min
         y_size = y_max - y_min
-        traj_data['x'] = traj_data['x'] - x_min
-        traj_data['y'] = traj_data['y'] - y_min
-
-        # Trim points above/below certain Z levels.
+        
+        # Filter road from LIDAR points.
         points = data.overhead_points
         z_mask = np.logical_and(
                 points[:, 2] > self.Z_LOWERBOUND, points[:, 2] < self.Z_UPPERBOUND)
         points = data.overhead_points[z_mask]
         labels = data.overhead_labels[z_mask]
-        # Select road LIDAR points.
-        road_label_mask = labels == SegmentationLabel.Road.value
+        road_label_mask = np.logical_or(labels == SegmentationLabel.Road.value,
+                labels == SegmentationLabel.Vehicle.value)
         road_points = points[road_label_mask]
         
-        # Form bitmap
+        # Adjust and filter occlusions from trajectory data.
         bitmap = points_to_2d_histogram(
                 road_points, x_min, x_max, y_min, y_max,
                 data.scene_config.pixels_per_m)
         bitmap[bitmap > 0] = 1
-
-        # adjust trajectory data
+        traj_data['x'] = traj_data['x'] - x_min
+        traj_data['y'] = traj_data['y'] - y_min
         transform = scipy.ndimage.distance_transform_cdt(-bitmap + 1)
         X = traj_data[['x', 'y']].values
         Xind = ( data.scene_config.pixels_per_m*X ).astype(int)
         vals = transform[ Xind.T[0], Xind.T[1] ]
-        traj_data = traj_data[vals < self.DISTANCE_FROM_ROAD]
+        comp_key = np.logical_or(traj_data['node_id'] == 'ego', vals < self.DISTANCE_FROM_ROAD)
+        traj_data = traj_data[comp_key]
 
-        # Form color image bitmap
-        bitmap[bitmap > 0] = 255
-        bitmap = np.stack((bitmap, np.zeros(bitmap.shape), np.zeros(bitmap.shape)), axis=0)
-        bitmap = bitmap.astype(np.uint8)
+        # Create bitmap from map data.
+        pixels_per_m = data.scene_config.pixels_per_m
+        road_polygons = data.map_data.road_polygons
+        yellow_lines = data.map_data.yellow_lines
+        white_lines = data.map_data.white_lines
+        dim = (int(pixels_per_m * y_size), int(pixels_per_m * x_size), 3)
+        bitmap = np.zeros(dim)
+        for polygon in road_polygons:
+            rzpoly = ( pixels_per_m*(polygon[:,:2] - np.array([x_min, y_min])) ) \
+                    .astype(int).reshape((-1,1,2))
+            cv.fillPoly(bitmap, [rzpoly], (0,0,255))
+
+        for line in white_lines:
+            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
+                    .astype(int).reshape((-1,1,2))
+            cv.polylines(bitmap, [rzline], False, (255,0,0), thickness=2)
+
+        for line in yellow_lines:
+            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
+                    .astype(int).reshape((-1,1,2))
+            cv.polylines(bitmap, [rzline], False, (0,255,0), thickness=2)
+        bitmap = bitmap.astype(np.uint8).transpose((2, 1, 0))
         
         # Create scene
         dt = data.fixed_delta_seconds * data.scene_config.record_interval
@@ -367,9 +386,6 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         scene.y_min = y_min
         scene.x_max = x_max
         scene.y_max = y_max
-
-        type_map = dict()
-
         scene.map_name = data.map_name
         scene.x_size = x_size
         scene.y_size = y_size
@@ -386,15 +402,15 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         scene.homography = homography
         scene.layer_names = layer_names
 
+        type_map = dict()
         type_map['VEHICLE']       = GeometricMap(data=bitmap,
                 homography=homography, description=', '.join(layer_names))
         type_map['VISUALIZATION'] = GeometricMap(data=bitmap,
                 homography=homography, description=', '.join(layer_names))
         scene.map = type_map
         scene_config = data.scene_config
-        del bitmap
-        del points
-        del labels
-        del road_points
-        del data
+        return scene, traj_data, max_timesteps, scene_config
+
+    def process_scene(self, data):
+        scene, traj_data, max_timesteps, scene_config = self.__process_carla_scene(data)
         return process_trajectron_scene(scene, traj_data, max_timesteps, scene_config)

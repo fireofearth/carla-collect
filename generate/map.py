@@ -12,16 +12,69 @@ from .label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegion
 from .label import SampleLabelMap, SampleLabelFilter
 from .label import SegmentationLabel
 
+class MapData(object):
+    def __init__(self, road_polygons, yellow_lines, white_lines):
+        self.road_polygons = road_polygons
+        self.yellow_lines = yellow_lines
+        self.white_lines = white_lines
+
 class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
     used to query whether an actor is in a certain part
     (i.e. intersection, hill) of the map for the sake of
     labeling samples."""
+    PRECISION = 0.05
+
+    @staticmethod
+    def __lateral_shift(transform, shift):
+        transform.rotation.yaw += 90
+        return transform.location + shift * transform.get_forward_vector()
+
+    def __is_yellow_line(self, waypoint, shift):
+        w = self.carla_map.get_waypoint(self.__lateral_shift(waypoint.transform, shift),
+                project_to_road=False)
+        if w is None:
+            return False
+        return w.lane_id * waypoint.lane_id < 0
+
+    def __extract_polygons_and_lines(self):
+        road_polygons = []
+        yellow_lines = []
+        white_lines = []
+        topology      = [x[0] for x in self.carla_map.get_topology()]
+        topology      = sorted(topology, key=lambda w: w.transform.location.z)
+        for waypoint in topology:
+            waypoints = [waypoint]
+            nxt = waypoint.next(self.PRECISION)[0]
+            while nxt.road_id == waypoint.road_id:
+                waypoints.append(nxt)
+                nxt = nxt.next(self.PRECISION)[0]
+
+            left_marking  = carlautil.locations_to_ndarray(
+                    [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints])
+            right_marking = carlautil.locations_to_ndarray(
+                    [self.__lateral_shift(w.transform, w.lane_width * 0.5) for w in waypoints])
+            road_polygon = np.concatenate((left_marking, np.flipud(right_marking)), axis=0)
+
+            if len(road_polygon) > 2:
+                road_polygons.append(road_polygon)
+                if not waypoint.is_intersection:
+                    sample = waypoints[int(len(waypoints) / 2)]
+                    if self.__is_yellow_line(sample, -sample.lane_width * 1.1):
+                        yellow_lines.append(left_marking)
+                    else:
+                        white_lines.append(left_marking)
+                    if self.__is_yellow_line(sample, sample.lane_width * 1.1):
+                        yellow_lines.append(right_marking)
+                    else:
+                        white_lines.append(right_marking)
+        return MapData(road_polygons, yellow_lines, white_lines)
 
     def __init__(self, carla_world, carla_map, debug=False):
         self.carla_world = carla_world
         self.carla_map = carla_map
-        self._debug = debug
+        self.__debug = debug
+        self.map_data = self.__extract_polygons_and_lines()
 
     @property
     def map_name(self):
@@ -198,7 +251,7 @@ class IntersectionReader(MapQuerier):
             max_wp_pitch = np.max(wp_pitches)
         #####
 
-        if self._debug:
+        if self.__debug:
             nearby_slopes = np.logical_and(
                     self.wp_is_sloped == True,
                     wps_filter)
