@@ -44,6 +44,7 @@ data_columns_pedestrian = pd.MultiIndex.from_product([['position', 'velocity', '
 curv_0_2 = 0
 curv_0_1 = 0
 total = 0
+occlusion = 0
 
 standardization = {
     'VEHICLE': {
@@ -74,12 +75,15 @@ def print_and_reset_specs():
     global total
     global curv_0_2
     global curv_0_1
+    global occlusion
     print(f"Total Nodes: {total}")
     print(f"Curvature > 0.1 Nodes: {curv_0_1}")
     print(f"Curvature > 0.2 Nodes: {curv_0_2}")
+    print(f"(Between) occlusions encountered: {occlusion}")
     total = 0
     curv_0_1 = 0
     curv_0_2 = 0
+    occlusion = 0
 
 def augment_scene(scene, angle):
     def rotate_pc(pc, alpha):
@@ -176,6 +180,25 @@ def trajectory_curvature(t):
         return 0, 0, 0
     return (path_length / path_distance) - 1, path_length, path_distance
 
+def plot_occlusion(scene, data, node_df, occl_count):
+    global occlusion
+    fig, ax = plt.subplots(figsize=(15,15))
+    # extent = (scene.x_min, scene.x_max, scene.y_min, scene.y_max)
+    ax.imshow(scene.map['VEHICLE'].as_image(), origin='lower')
+    xy = 3*node_df[['x', 'y']].values
+    ax.scatter(xy[:, 0], xy[:, 1], color='yellow')
+    node_df = data[data['node_id'] == 'ego']
+    xy = 3*node_df[['x', 'y']].values
+    ax.scatter(xy[:, 0], xy[:, 1], color='green')
+    ax.set_title(repr(occl_count))
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_aspect('equal')
+    fig.tight_layout()
+    fn = f"occlusion{occlusion}_{ scene.name.replace('/', '_') }.png"
+    fp = os.path.join('out', fn)
+    fig.savefig(fp)
+
 def process_trajectron_scene(scene, data, max_timesteps, scene_config):
     for node_id in pd.unique(data['node_id']):
         node_frequency_multiplier = 1
@@ -185,8 +208,12 @@ def process_trajectron_scene(scene, data, max_timesteps, scene_config):
             continue
 
         if not np.all(np.diff(node_df['frame_id']) == 1):
+            global occlusion
+            occlusion += 1
             logging.info("Occlusion")
-            logging.info(np.diff(node_df['frame_id']))
+            occl_count = np.diff(node_df['frame_id'])
+            logging.info(occl_count)
+            # plot_occlusion(scene, data, node_df, occl_count)
             continue  # TODO Make better
 
         node_values = node_df[['x', 'y']].values

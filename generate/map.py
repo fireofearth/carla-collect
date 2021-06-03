@@ -73,7 +73,7 @@ class MapQuerier(ABC):
     def __init__(self, carla_world, carla_map, debug=False):
         self.carla_world = carla_world
         self.carla_map = carla_map
-        self.__debug = debug
+        self._debug = debug
         self.map_data = self.__extract_polygons_and_lines()
 
     @property
@@ -251,7 +251,7 @@ class IntersectionReader(MapQuerier):
             max_wp_pitch = np.max(wp_pitches)
         #####
 
-        if self.__debug:
+        if self._debug:
             nearby_slopes = np.logical_and(
                     self.wp_is_sloped == True,
                     wps_filter)

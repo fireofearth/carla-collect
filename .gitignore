@@ -1,4 +1,5 @@
 .vscode/
+carla_v2_dataset/
 out/
 plots/
 __pycache__/

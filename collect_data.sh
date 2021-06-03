@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#python run.py
+python run.py
 
-#sleep 3
+sleep 3
 
 python run.py --start-at-episode 5
 

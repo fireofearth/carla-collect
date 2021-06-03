@@ -6,7 +6,11 @@
 # This work is licensed under the terms of the MIT license.
 # For a copy, see <https://opensource.org/licenses/MIT>.
 
-"""Example of automatic vehicle control from client side."""
+"""Generate CARLA batched data for Trajectron++
+
+To test, call
+python run.py -e1 -f200 -b10
+"""
 
 import argparse
 import collections
@@ -69,7 +73,7 @@ class DataGenerator(object):
         self.client.set_timeout(10.0)
         if self.args.map is None:
             self.world = self.client.get_world()
-            logging.info(f"Using the current map.")
+            logging.info("Using the current map.")
         else:
             logging.info(f"Using the map {self.args.map}.")
             self.world = self.client.load_world(self.args.map)
@@ -315,7 +319,7 @@ def main():
         type=dir_path,
         default='out',
         dest='save_directory',
-        help='Directory to save the dataset.')
+        help='Directory to save the dataset (default: out).')
     argparser.add_argument(
         '--label',
         type=str,
@@ -348,7 +352,7 @@ def main():
         metavar='F',
         default=500,
         type=int,
-        help='Number of frames in each episode to capture (default: 1000)')
+        help='Number of frames in each episode to capture (default: 500)')
     argparser.add_argument(
         '-b', '--n-burn-frames',
         metavar='B',
