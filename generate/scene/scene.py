@@ -179,7 +179,7 @@ class SceneBuilder(ABC):
                     'frame_id': np.full((len(other_ids),), frame_id),
                     # use env.NodeType.VEHICLE
                     'type': [self.__scene_config.node_type.VEHICLE] * len(other_ids),
-                    'node_id': other_ids,
+                    'node_id': util.map_to_list(str, other_ids),
                     'robot': [False] * len(other_ids),
                     'distances': distances,
                     'x': others_data[0],
