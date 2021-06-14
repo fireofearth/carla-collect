@@ -13,10 +13,22 @@ from .label import SampleLabelMap, SampleLabelFilter
 from .label import SegmentationLabel
 
 class MapData(object):
+    """Map data.
+
+    Attributes
+    ==========
+    road_polygons : list of np.array
+        List of road polygons (closed), each represented as array of shape (?, 2)
+    yellow_lines : list of  np.array
+        List of white road lines, each represented as array of shape (?, 2)
+    white_lines : list of np.array
+        List of white road lines, each represented as array of shape (?, 2)
+    """
     def __init__(self, road_polygons, yellow_lines, white_lines):
         self.road_polygons = road_polygons
         self.yellow_lines = yellow_lines
         self.white_lines = white_lines
+        
 
 class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
@@ -38,6 +50,8 @@ class MapQuerier(ABC):
         return w.lane_id * waypoint.lane_id < 0
 
     def __extract_polygons_and_lines(self):
+        """Extract map features (road lanes, road polygons) as 
+        """
         road_polygons = []
         yellow_lines = []
         white_lines = []
@@ -68,6 +82,8 @@ class MapQuerier(ABC):
                         yellow_lines.append(right_marking)
                     else:
                         white_lines.append(right_marking)
+        for a in road_polygons + yellow_lines + white_lines:
+            a[:,1] *= -1
         return MapData(road_polygons, yellow_lines, white_lines)
 
     def __init__(self, carla_world, carla_map, debug=False):

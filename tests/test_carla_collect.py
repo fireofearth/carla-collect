@@ -14,7 +14,7 @@ from generate.scene.misc_scene import (
 TESTSceneBuilder=DTSelectWithMapSceneBuilder
 
 """
-pytest --log-cli-level=INFO -vv -s
+pytest --log-cli-level=INFO --capture=tee-sys -vv
 """
 
 def test_no_npcs(carla_Town03_synchronous):

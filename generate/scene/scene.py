@@ -172,7 +172,7 @@ class SceneBuilder(ABC):
         if len(self.__other_vehicles):
             other_ids = list(self.__other_vehicles.keys())
             other_vehicles = self.__other_vehicles.values()
-            others_data = carlautil.vehicles_to_xyz_lwh_pyr_ndarray(other_vehicles).T
+            others_data = carlautil.actors_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(other_vehicles).T
             other_locations = others_data[:3].T
             distances = np.linalg.norm(other_locations - player_location, axis=1)
             df = pd.DataFrame({
@@ -185,17 +185,23 @@ class SceneBuilder(ABC):
                     'x': others_data[0],
                     'y': others_data[1],
                     'z': others_data[2],
-                    'length': others_data[3],
-                    'width': others_data[4],
-                    'height': others_data[5],
-                    'heading': others_data[7]})
+                    'v_x': others_data[3],
+                    'v_y': others_data[4],
+                    'v_z': others_data[5],
+                    'a_x': others_data[6],
+                    'a_y': others_data[7],
+                    'a_z': others_data[8],
+                    'length': others_data[9],
+                    'width': others_data[10],
+                    'height': others_data[11],
+                    'heading': others_data[13]})
             df = df[df['distances'] < self.__radius]
             df = df[df['z'].between(self.Z_LOWERBOUND, self.Z_UPPERBOUND, inclusive=False)]
             del df['distances']
         else:
             df = pd.DataFrame(columns=['frame_id', 'type', 'node_id', 'robot',
                     'x', 'y', 'z', 'length', 'width', 'height', 'heading'])
-        ego_data = carlautil.vehicle_to_xyz_lwh_pyr_ndarray(self.__ego_vehicle)
+        ego_data = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle)
         data_point = pd.Series({
                 'frame_id': frame_id,
                 # use env.NodeType.VEHICLE
@@ -205,6 +211,12 @@ class SceneBuilder(ABC):
                 'x': ego_data[0],
                 'y': ego_data[1],
                 'z': ego_data[2],
+                'v_x': ego_data[3],
+                'v_y': ego_data[4],
+                'v_z': ego_data[5],
+                'a_x': ego_data[6],
+                'a_y': ego_data[7],
+                'a_z': ego_data[8],
                 'length': ego_data[3],
                 'width': ego_data[4],
                 'height': ego_data[5],
@@ -264,20 +276,33 @@ class SceneBuilder(ABC):
             self.__overhead_labels = np.concatenate((self.__overhead_labels, labels))
             self.__overhead_ids = np.concatenate((self.__overhead_ids, object_ids))
         
+    def __reflect_lidar_and_trajectory_data_along_x_axis(self):
+        """Reflects all coordinates data along the x-axis in-place.
+        CARLA 0.9.11 uses a flipped y-axis"""
+        self.__overhead_points[:, 1] *= -1
+        self.__trajectory_data[['y', 'v_y', 'a_y']] *= -1
+        self.__trajectory_data['heading'] = util.reflect_radians_about_x_axis(
+                self.__trajectory_data['heading'])
+
     def __complete_data_collection(self):
-        """
-        """
-        # Remove scene builder from data collector.
+        """Do after collection processing of the data.
+        Also reflects all coordinates data along the x-axis."""
+        
+        """Remove scene builder from data collector."""
         self.__remove_scene_builder()
-        # Finish LIDAR raw data
+
+        """Finish LIDAR raw data"""
         for frame in range(self.__first_frame, self.__last_frame + 1):
             lidar_measurement = self.__lidar_feeds[frame]
             self.__process_lidar_snapshot(lidar_measurement)
-        # Finish Trajectory raw data
+
+        """Finish Trajectory raw data"""
         for l in self.__vehicle_visibility.values():
             l.add('ego')
         self.__trajectory_data.sort_values('frame_id', inplace=True)
-        # Return scene raw data
+
+        """Reflect and return scene raw data."""
+        self.__reflect_lidar_and_trajectory_data_along_x_axis()
         return SceneBuilderData(self.__save_directory, self.__scene_name, 
                 self.__map_reader.map_name,
                 self.__world.get_settings().fixed_delta_seconds,
