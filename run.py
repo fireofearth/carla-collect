@@ -44,10 +44,9 @@ from generate import (
         get_all_vehicle_blueprints,
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
-
 from generate import SceneConfig
-from generate import TrajectronPlusPlusSceneBuilder
-from generate.scene.trajectron_scene import (
+from generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from generate.scene.v2_1.trajectron_scene import (
         standardization, print_and_reset_specs, plot_trajectron_scene)
 
 class DataGenerator(object):

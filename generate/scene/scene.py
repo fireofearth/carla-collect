@@ -217,10 +217,10 @@ class SceneBuilder(ABC):
                 'a_x': ego_data[6],
                 'a_y': ego_data[7],
                 'a_z': ego_data[8],
-                'length': ego_data[3],
-                'width': ego_data[4],
-                'height': ego_data[5],
-                'heading': ego_data[7]})
+                'length': ego_data[9],
+                'width': ego_data[10],
+                'height': ego_data[11],
+                'heading': ego_data[13]})
         df = df.append(data_point, ignore_index=True)
         if self.__trajectory_data is None:
             self.__trajectory_data = df

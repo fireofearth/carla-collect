@@ -2,6 +2,8 @@
 
 python run.py
 
+exit 0
+
 sleep 3
 
 python run.py --start-at-episode 5

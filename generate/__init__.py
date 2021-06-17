@@ -29,7 +29,7 @@ from .label import SampleLabelMap, SampleLabelFilter
 from .label import SegmentationLabel
 
 from .scene import SceneBuilder, SceneConfig
-from .scene import TrajectronPlusPlusSceneBuilder
+from .scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
 
 def get_all_vehicle_blueprints(world):
     blueprints = world.get_blueprint_library().filter('vehicle.*')

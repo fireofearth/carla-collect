@@ -1,5 +1,6 @@
 .vscode/
 carla_v2_dataset/
+carla_v3_dataset/
 out/
 plots/
 __pycache__/

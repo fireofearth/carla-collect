@@ -29,9 +29,9 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/experiments/nuScenes")
 
-from ..label import SegmentationLabel
-from .scene import SceneBuilder
-from .scene import points_to_2d_histogram, round_to_int
+from ...label import SegmentationLabel
+from ..scene import SceneBuilder
+from ..scene import points_to_2d_histogram, round_to_int
 
 FREQUENCY = 2
 dt = 1 / FREQUENCY
@@ -180,24 +180,6 @@ def trajectory_curvature(t):
         return 0, 0, 0
     return (path_length / path_distance) - 1, path_length, path_distance
 
-def plot_trajectron_scene(savedir, scene):
-    fig, ax = plt.subplots(figsize=(15,15))
-    # extent = (scene.x_min, scene.x_max, scene.y_min, scene.y_max)
-    ax.imshow(scene.map['VEHICLE'].as_image(), origin='lower')
-    spectral = cm.nipy_spectral(np.linspace(0, 1, len(scene.nodes)))
-    for idx, node in enumerate(scene.nodes):
-        # using values from scene.map['VEHICLE'].homography
-        # to scale points
-        xy = 3 * node.data.data[:, :2]
-        ax.scatter(xy[:, 0], xy[:, 1], color=spectral[idx])
-    ax.set_xlabel('x')
-    ax.set_ylabel('y')
-    ax.set_aspect('equal')
-    fig.tight_layout()
-    fn = f"{ scene.name.replace('/', '_') }.png"
-    fp = os.path.join(savedir, fn)
-    fig.savefig(fp)
-
 def plot_occlusion(scene, data, node_df, occl_count):
     global occlusion
     fig, ax = plt.subplots(figsize=(15,15))
@@ -337,81 +319,25 @@ def process_trajectron_scene(scene, data, max_timesteps, scene_config):
 
     return scene
 
-def process_carla_scene(scene, data, max_timesteps, scene_config):
-    for node_id in pd.unique(data['node_id']):
-        # What is this?
-        node_frequency_multiplier = 1
-        node_df = data[data['node_id'] == node_id].copy()
-        if node_df['x'].shape[0] < 2:
-            continue
-        
-        if not np.all(np.diff(node_df['frame_id']) == 1):
-            global occlusion
-            occlusion += 1
-            logging.info("Occlusion")
-            occl_count = np.diff(node_df['frame_id'])
-            logging.info(occl_count)
-            # plot_occlusion(scene, data, node_df, occl_count)
-            continue  # TODO Make better
 
-        if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE and not node_id == 'ego':
-            x, y = node_df['x'].values, node_df['y'].values
-            curvature, pl, _ = trajectory_curvature(np.stack((x, y), axis=-1))
-            if pl < 1.0:  # vehicle is "not" moving
-                node_df[['x', 'y', 'heading']] = node_df[['x', 'y', 'heading']].values[0]
-                node_df[['v_x', 'v_y', 'a_x', 'a_y']] = 0.
-            global total
-            global curv_0_2
-            global curv_0_1
-            total += 1
-            if pl > 1.0:
-                if curvature > .2:
-                    curv_0_2 += 1
-                    node_frequency_multiplier = 3*int(np.floor(total/curv_0_2))
-                elif curvature > .1:
-                    curv_0_1 += 1
-                    node_frequency_multiplier = 3*int(np.floor(total/curv_0_1))
-        
-        x, y = node_df['x'].values, node_df['y'].values
-        v_x, v_y = node_df['v_x'].values, node_df['v_y'].values
-        a_x, a_y = node_df['a_x'].values, node_df['a_y'].values
-        if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE:
-            v = np.stack((v_x, v_y,), axis=-1)
-            a = np.stack((a_x, a_y,), axis=-1)
-            v_norm = np.linalg.norm(v, axis=-1)
-            a_norm = np.linalg.norm(a, axis=-1)
-            heading = node_df['heading'].values
-            heading_x, heading_y = np.cos(heading), np.sin(heading)
-            data_dict = {('position', 'x'): x,
-                         ('position', 'y'): y,
-                         ('velocity', 'x'): v_x,
-                         ('velocity', 'y'): v_y,
-                         ('velocity', 'norm'): v_norm,
-                         ('acceleration', 'x'): a_x,
-                         ('acceleration', 'y'): a_y,
-                         ('acceleration', 'norm'): a_norm,
-                         ('heading', 'x'): heading_x,
-                         ('heading', 'y'): heading_y,
-                         ('heading', '°'): heading,
-                         ('heading', 'd°'): derivative_of(heading, dt, radian=True)}
-            node_data = pd.DataFrame(data_dict, columns=data_columns_vehicle)
-        else:
-            data_dict = {('position', 'x'): x,
-                         ('position', 'y'): y,
-                         ('velocity', 'x'): v_x,
-                         ('velocity', 'y'): v_y,
-                         ('acceleration', 'x'): a_x,
-                         ('acceleration', 'y'): a_y}
-            node_data = pd.DataFrame(data_dict, columns=data_columns_pedestrian)
-        
-        node = Node(node_type=node_df.iloc[0]['type'], node_id=node_id,
-                data=node_data, frequency_multiplier=node_frequency_multiplier)
-        node.first_timestep = node_df['frame_id'].iloc[0]
-        if node_df.iloc[0]['robot'] == True:
-            node.is_robot = True
-            scene.robot = node
-        scene.nodes.append(node)
-    return scene
+def plot_trajectron_scene(savedir, scene):
+    fig, ax = plt.subplots(figsize=(15,15))
+    # extent = (scene.x_min, scene.x_max, scene.y_min, scene.y_max)
+    ax.imshow(scene.map['VEHICLE'].as_image(), origin='lower')
+    spectral = cm.nipy_spectral(np.linspace(0, 1, len(scene.nodes)))
+    for idx, node in enumerate(scene.nodes):
+        # using values from scene.map['VEHICLE'].homography
+        # to scale points
+        xy = 3 * node.data.data[:, :2]
+        ax.scatter(xy[:, 0], xy[:, 1], color=spectral[idx])
+    ax.set_xlabel('x')
+    ax.set_ylabel('y')
+    ax.set_aspect('equal')
+    fig.tight_layout()
+    fn = f"{ scene.name.replace('/', '_') }.png"
+    fp = os.path.join(savedir, fn)
+    fig.savefig(fp)
+
 
 class TrajectronPlusPlusSceneBuilder(SceneBuilder):
     DISTANCE_FROM_ROAD = 20.
@@ -514,4 +440,4 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
 
     def process_scene(self, data):
         scene, traj_data, max_timesteps, scene_config = self.__process_carla_scene(data)
-        return process_carla_scene(scene, traj_data, max_timesteps, scene_config)
+        return process_trajectron_scene(scene, traj_data, max_timesteps, scene_config)

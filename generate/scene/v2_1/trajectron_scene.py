@@ -29,9 +29,9 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/experiments/nuScenes")
 
-from ..label import SegmentationLabel
-from .scene import SceneBuilder
-from .scene import points_to_2d_histogram, round_to_int
+from ...label import SegmentationLabel
+from ..scene import SceneBuilder
+from ..scene import points_to_2d_histogram, round_to_int
 
 FREQUENCY = 2
 dt = 1 / FREQUENCY
@@ -387,22 +387,29 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         white_lines = data.map_data.white_lines
         dim = (int(pixels_per_m * y_size), int(pixels_per_m * x_size), 3)
         bitmap = np.zeros(dim)
+
+        """NuScenes bitmap format
+        scene.map[...].as_image() has shape (y, x, c)
+        Channel 1: lane, road_segment, drivable_area
+        Channel 2: road_divider
+        Channel 3: lane_divider"""
+
         for polygon in road_polygons:
             rzpoly = ( pixels_per_m*(polygon[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
-            cv.fillPoly(bitmap, [rzpoly], (0,0,255))
-
-        for line in white_lines:
-            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
-                    .astype(int).reshape((-1,1,2))
-            cv.polylines(bitmap, [rzline], False, (255,0,0), thickness=2)
+            cv.fillPoly(bitmap, [rzpoly], (255,0,0))
 
         for line in yellow_lines:
             rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
             cv.polylines(bitmap, [rzline], False, (0,255,0), thickness=2)
+
+        for line in white_lines:
+            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
+                    .astype(int).reshape((-1,1,2))
+            cv.polylines(bitmap, [rzline], False, (0,0,255), thickness=2)
         bitmap = bitmap.astype(np.uint8).transpose((2, 1, 0))
-        
+
         # Create scene
         dt = data.fixed_delta_seconds * data.scene_config.record_interval
         scene = Scene(timesteps=max_timesteps + 1, dt=dt,
