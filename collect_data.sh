@@ -1,34 +1,32 @@
 #!/bin/bash
 
-python run.py
+# python run.py
 
-exit 0
+# sleep 3
 
-sleep 3
+# python run.py --start-at-episode 5
 
-python run.py --start-at-episode 5
+# sleep 3
 
-sleep 3
+# python run.py --start-at-episode 10
 
-python run.py --start-at-episode 10
+# sleep 3
 
-sleep 3
+# python run.py --start-at-episode 15
 
-python run.py --start-at-episode 15
+# sleep 3
 
-sleep 3
+# python run.py --start-at-episode 20
 
-python run.py --start-at-episode 15
+# sleep 3
 
-sleep 3
+# python run.py --start-at-episode 25
 
-python run.py --start-at-episode 20
-
-sleep 3
-
-python run.py --start-at-episode 25
-
-sleep 3
+# sleep 3
 
 python run.py --start-at-episode 30
+
+sleep 3
+
+python run.py --start-at-episode 35
 
