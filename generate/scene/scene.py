@@ -174,18 +174,18 @@ class SceneBuilder(ABC):
         #   where it collected LIDAR from.
         self.__seen_lidar_keys = set()
 
-        # __vehicle_visibility : map of (int, set of int)
+        # __vehicle_visibility : dict of (int, set of int)
         #   IDs of vehicles visible to the ego vehicle by frame ID.
         #   Vehicles are visible when then are hit by semantic LIDAR.
-        self.__vehicle_visibility = { }
+        self.__vehicle_visibility = dict()
 
         self.__radius = scene_radius
         # __sensor_loc_at_t0 : carla.Transform
         self.__sensor_loc_at_t0 = None
         # __overhead_points : np.float32
         self.__overhead_points = None
-        # __overhead_point_labels : np.uint32
-        self.__overhead_point_labels = None
+        # __overhead_labels : np.uint32
+        self.__overhead_labels = None
         # __overhead_ids : np.uint32
         self.__overhead_ids = None
         # __trajectory_data : pd.DataFrame
@@ -300,7 +300,7 @@ class SceneBuilder(ABC):
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             vehicle_label_mask = labels == SegmentationLabel.Vehicle.value
-            object_ids = object_ids[vehicle_label_mask].unique()
+            object_ids = np.unique(object_ids[vehicle_label_mask])
             self.__vehicle_visibility[frame_id] = set(util.map_to_list(str, object_ids))
             self.__vehicle_visibility[frame_id].add('ego')
 
