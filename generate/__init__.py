@@ -59,7 +59,14 @@ def create_semantic_lidar_blueprint(world):
     return lidar_bp
 
 
-class DataCollector(object):
+class AbstractDataCollector(ABC):
+
+    @abstractmethod
+    def remove_scene_builder(self, frame):
+        pass
+
+
+class DataCollector(AbstractDataCollector):
     """Data collector based on DIM and Trajectron++."""
 
     Z_SENSOR_REL = 2.5

@@ -1,6 +1,7 @@
 import os
 import collections
 from abc import ABC, abstractmethod
+import copy
 import logging
 
 import numpy as np
@@ -21,18 +22,58 @@ from ..map import MapQuerier
 from ..label import SampleLabelFilter
 from ..label import SegmentationLabel
 
-class SceneConfig(object):
-    """Configuration used by scene builder."""
-    def __init__(self, simulation_dt=0.1,
+class AbstractSceneConfig(ABC):
+    """Scene configuration. Scene builder and classes inheriting it
+    uses this information to get parameters for scene processing.
+    """
+    def __init__(self,
+            record_interval=None,
+            pixels_per_m=None,
+            node_type=None):
+        self.record_interval = record_interval
+        self.pixels_per_m = pixels_per_m
+        self.node_type = node_type
+
+
+class SceneConfig(AbstractSceneConfig):
+    """Self contained scene configuration.
+    
+    Attributes
+    ==========
+    scene_interval : int
+        The length of the scene.
+        The scene builder will call SceneBuilder.finish_scene()
+        after collecting scene_interval trajectory points.
+    record_interval : int
+        The interval of time between capturing trajectories.
+        If simulator stimestep is 0.1 and record_interval is 5,
+        then trajectories in the scene are sampled at 0.5s or 5 Hz.
+    """
+    def __init__(self,
             scene_interval=32,
             record_interval=5,
             pixels_per_m=3,
             node_type=NodeTypeEnum(['VEHICLE'])):
-        self.simulation_dt = simulation_dt # not being used?
+        super().__init__(
+                record_interval=record_interval,
+                pixels_per_m=pixels_per_m,
+                node_type=node_type)
         self.scene_interval = scene_interval
-        self.record_interval = record_interval
-        self.pixels_per_m = pixels_per_m
-        self.node_type = node_type
+
+
+class OnlineConfig(AbstractSceneConfig):
+    """
+    Scene builder will *not* call SceneBuilder.finish_scene(). The user
+    must call SceneBuilder.finish_scene() or SceneBuilder.get_scene() manually.
+    """
+    def __init__(self,
+            record_interval=5,
+            pixels_per_m=3,
+            node_type=NodeTypeEnum(['VEHICLE'])):
+        super().__init__(
+                record_interval=record_interval,
+                pixels_per_m=pixels_per_m,
+                node_type=node_type)
 
 
 class SceneBuilderData(object):
@@ -56,14 +97,20 @@ class SceneBuilderData(object):
 
 
 class SceneBuilder(ABC):
-    """Constructs a scene that contains scene_interval samples
+    """Constructs a scene that contains samples
     of consecutive snapshots of the simulation. The scenes have:
 
-    Vehicle bounding boxes and locations in cartesion coordinates.
-
-    LIDAR overhead bitmap consisting of LIDAR points collected at
-    each of the scene_interval timesteps by the ego vehicle.
-    """
+    - Vehicle bounding boxes and locations in cartesion coordinates.
+    - LIDAR overhead bitmap consisting of LIDAR points collected at
+    each timestep of the ego vehicle.
+    
+    There are two models:
+    
+    - Static scene mode: builder collects data over a scene_interval
+    length ego vehicle trajectory and calls its own method
+    finish_scene() when its done.
+    - Online scene mode: builder continually builds the scene and
+    returns whatever it has collected using get_scene()."""
 
     Z_UPPERBOUND =  4
     Z_LOWERBOUND = -4
@@ -108,16 +155,28 @@ class SceneBuilder(ABC):
         self.__callback = callback
         self.__debug = debug
 
+        # __scene_config : AbstractSceneConfig
+        #   If it is of type SceneConfig then scene builder
+        #   collecting scene once.
+        #   If it is of type OnlineConfig then scene builder
+        #   can be reused to collect multipe scenes.
         self.__scene_config = scene_config
-        self.__last_frame = self.__first_frame + (self.__scene_config.scene_interval \
-                - 1)*self.__scene_config.record_interval + 1
+        if self.is_online:
+            self.__last_frame = np.inf
+        else:
+            self.__last_frame = self.__first_frame + (self.__scene_config.scene_interval \
+                    - 1)*self.__scene_config.record_interval + 1
 
-        self.__finished_capture_trajectory = False
         self.__finished_lidar_trajectory = False
+        
+        # __seen_lidar_keys : set
+        #   Used by online builder to keep track of frames
+        #   where it collected LIDAR from.
+        self.__seen_lidar_keys = set()
 
         # __vehicle_visibility : map of (int, set of int)
-        #    IDs of vehicles visible to the ego vehicle by frame ID.
-        #    Vehicles are visible when then are hit by semantic LIDAR.
+        #   IDs of vehicles visible to the ego vehicle by frame ID.
+        #   Vehicles are visible when then are hit by semantic LIDAR.
         self.__vehicle_visibility = { }
 
         self.__radius = scene_radius
@@ -132,6 +191,10 @@ class SceneBuilder(ABC):
         # __trajectory_data : pd.DataFrame
         self.__trajectory_data = None
     
+    @property
+    def is_online(self):
+        return isinstance(self.__scene_config, OnlineConfig)
+
     def debug_draw_red_player_bbox(self):
         self.__world.debug.draw_box(
                 carla.BoundingBox(
@@ -237,8 +300,9 @@ class SceneBuilder(ABC):
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             vehicle_label_mask = labels == SegmentationLabel.Vehicle.value
-            object_ids = object_ids[vehicle_label_mask]
-            self.__vehicle_visibility[frame_id] = set(object_ids)
+            object_ids = object_ids[vehicle_label_mask].unique()
+            self.__vehicle_visibility[frame_id] = set(util.map_to_list(str, object_ids))
+            self.__vehicle_visibility[frame_id].add('ego')
 
     def __add_1_to_points(self, points):
         return np.pad(points, [(0, 0), (0, 1)],
@@ -276,34 +340,25 @@ class SceneBuilder(ABC):
             self.__overhead_labels = np.concatenate((self.__overhead_labels, labels))
             self.__overhead_ids = np.concatenate((self.__overhead_ids, object_ids))
         
-    def __reflect_lidar_and_trajectory_data_along_x_axis(self):
-        """Reflects all coordinates data along the x-axis in-place.
-        CARLA 0.9.11 uses a flipped y-axis"""
-        self.__overhead_points[:, 1] *= -1
-        self.__trajectory_data[['y', 'v_y', 'a_y']] *= -1
-        self.__trajectory_data['heading'] = util.reflect_radians_about_x_axis(
-                self.__trajectory_data['heading'])
+    def __build_scene_data(self):
+        """Does post/mid collection processing of the data.
+        This method copies the data and does processing on the copy if 
+        __scene_config is a SceneConfig, or directly processes the data if
+        __scene_config is a OnlineConfig.
 
-    def __complete_data_collection(self):
-        """Do after collection processing of the data.
-        Also reflects all coordinates data along the x-axis."""
+        Reflects all coordinates data about the x-axis in-place.
+        This is needed because CARLA 0.9.11 uses a flipped y-axis.
         
-        """Remove scene builder from data collector."""
-        self.__remove_scene_builder()
-
-        """Finish LIDAR raw data"""
-        for frame in range(self.__first_frame, self.__last_frame + 1):
-            lidar_measurement = self.__lidar_feeds[frame]
-            self.__process_lidar_snapshot(lidar_measurement)
-
-        """Finish Trajectory raw data"""
-        for l in self.__vehicle_visibility.values():
-            l.add('ego')
-        self.__trajectory_data.sort_values('frame_id', inplace=True)
-
-        """Reflect and return scene raw data."""
-        self.__reflect_lidar_and_trajectory_data_along_x_axis()
-        return SceneBuilderData(self.__save_directory, self.__scene_name, 
+        Returns
+        =======
+        np.array
+            Current overhead points collected by scene builder of shape (# points, 3)
+            that has been flipped about the x-axis.
+        pd.DataFrame
+            Current trajectory data collected by scene builder with relevant data
+            (position, velocity, acceleration, heading) flipped about the x-axis.
+        """
+        scene_data = SceneBuilderData(self.__save_directory, self.__scene_name, 
                 self.__map_reader.map_name,
                 self.__world.get_settings().fixed_delta_seconds,
                 self.__trajectory_data,
@@ -312,6 +367,42 @@ class SceneBuilder(ABC):
                 self.__map_reader.map_data,
                 self.__vehicle_visibility, self.__sensor_loc_at_t0,
                 self.__first_frame, self.__scene_config)
+        
+        if self.is_online:
+            """Copies the scene data.
+            WARNING: map_data, scene_config are passed as reference."""
+            attr_names = ['trajectory_data', 'overhead_points', 'overhead_labels',
+                    'overhead_ids', 'sensor_loc_at_t0', 'vehicle_visibility']
+            for name in attr_names:
+                setattr(scene_data, name, copy.deepcopy(getattr(scene_data, name)))
+
+        """Reflect and return scene raw data."""
+        scene_data.overhead_points[:, 1] *= -1
+        scene_data.trajectory_data[['y', 'v_y', 'a_y']] *= -1
+        scene_data.trajectory_data['heading'] = util.reflect_radians_about_x_axis(
+                scene_data.trajectory_data['heading'])
+        
+        """Sort Trajectory data"""
+        scene_data.trajectory_data.sort_values('frame_id', inplace=True)
+
+        return scene_data
+
+    def __checkpoint(self):
+        """Do mid/post collection processing of the data and return
+        the data as a SceneBuilderData.
+        Also reflects all coordinates data along the x-axis."""
+
+        """Finish LIDAR raw data"""
+        if self.is_online:
+            frames = set(self.__lidar_feeds.keys()) - self.__seen_lidar_keys
+            self.__seen_lidar_keys.update(frames)
+        else:
+            frames = range(self.__first_frame, self.__last_frame + 1)
+        for frame in frames:
+            lidar_measurement = self.__lidar_feeds[frame]
+            self.__process_lidar_snapshot(lidar_measurement)
+
+        return self.__build_scene_data()
 
     def __remove_scene_builder(self):
         self.__data_collector.remove_scene_builder(self.__first_frame)
@@ -332,24 +423,51 @@ class SceneBuilder(ABC):
         """
         pass
 
+    def get_scene(self):
+        """Get a scene composed of all the data collected so far.
+        
+        WARNING: This method should not be called
+        if __scene_config is a SceneConfig.
+        """
+
+        logging.debug(f"in SceneBuilder.get_scene()")
+        scene_data = self.__checkpoint()
+        return self.process_scene(scene_data)
+
     def finish_scene(self):
+        """Finish the scene. This function should be the *last* function
+        to be called on the scene builder.
+
+        SceneBuilder.finish_scene() allows the scene builder to call itself.
+        This way the data collector does not have to figure out whether the
+        scene builder has finished collecting all the data it needs.
+        
+        WARNING: This method should not be called
+        if __scene_config is a OnlineConfig."""
+
         """Finish scene and removes scene builder from data collector. Calls process_scene()."""
         logging.debug(f"in SceneBuilder.finish_scene()")
-        # Complete data collection before doing starting data processing.
-        data = self.__complete_data_collection()
-        self.__callback(self.process_scene(data))
+
+        """Reach checkpoint in data collection before doing starting data processing."""
+        scene_data = self.__checkpoint()
+
+        """Process the scene and send the output to its destination via callback"""
+        self.__callback(self.process_scene(scene_data))
+
+        """Remove scene builder from data collector."""
+        self.__remove_scene_builder()
 
     def capture_trajectory(self, frame):
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
-            if frame_id < self.__scene_config.scene_interval:
+            should_capture_at_frame = True if self.is_online else \
+                    frame_id < self.__scene_config.scene_interval
+            if should_capture_at_frame:
                 logging.debug(f"in SceneBuilder.capture_trajectory() frame_id = {frame_id}")
                 self.__capture_agents_within_radius(frame_id)
             else:
                 if self.__finished_lidar_trajectory:
                     self.finish_scene()
-                else:
-                    self.__finished_capture_trajectory = True
 
     def capture_lidar(self, lidar_measurement):
         frame = lidar_measurement.frame
