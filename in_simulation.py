@@ -1,46 +1,91 @@
 import sys
+import os
+import json
 import math
+import argparse
+import logging
+import collections
+import datetime
+import random
+import weakref
 from enum import Enum
+import dill
 
 import numpy as np
-import pygame
-from pygame.locals import *
+import pandas as pd
+import scipy.spatial
+import scipy.optimize
+import matplotlib
+import matplotlib.pyplot as plt
+import matplotlib.colors as clr
+import matplotlib.cm as cm
+import matplotlib.patches as patches
+import torch
+# import pygame
+# from pygame.locals import *
 import control
 import control.matlab
 import docplex.mp
 import docplex.mp.model
-
-import utility as util
 import carla
 
-# TODO: link this properly
-from agents.tools.misc import is_within_distance_ahead, is_within_distance, compute_distance
-from agents.navigation.controller import VehiclePIDController
-from agents.navigation.local_planner_behavior import LocalPlanner
-from agents.tools.misc import distance_vehicle, draw_waypoints
+import utility as util
+import carlautil
+import carlautil.debug
 
 try:
-    # trajectron-plus-plus/experiments/nuScenes
-    from helper import load_model
+    from agents.tools.misc import is_within_distance_ahead, is_within_distance, compute_distance
+    from agents.navigation.controller import VehiclePIDController
+    from agents.navigation.local_planner_behavior import LocalPlanner
+    from agents.tools.misc import distance_vehicle, draw_waypoints
 except ModuleNotFoundError as e:
-    raise Exception("You forgot to link trajectron-plus-plus/experiments/nuScenes")
+    raise Exception("You forgot to link carla/PythonAPI/carla")
+
+# try:
+#     # trajectron-plus-plus/experiments/nuScenes
+#     from helper import load_model
+# except ModuleNotFoundError as e:
+#     raise Exception("You forgot to link trajectron-plus-plus/experiments/nuScenes")
 
 try:
     # trajectron-plus-plus/trajectron
     # from environment import Environment, Scene, Node
     # from environment import GeometricMap, derivative_of
-    from model.dataset import get_timesteps_data
     # from model.components import *
-    # from model.model_utils import *
+    from utils.trajectory_utils import prediction_output_to_trajectories
+    from environment import Environment
+    from model.dataset import get_timesteps_data
+    from model.model_registrar import ModelRegistrar
+    from model.model_utils import ModeKeys
+    from model import Trajectron
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-
 from generate import AbstractDataCollector
 from generate import create_semantic_lidar_blueprint, get_all_vehicle_blueprints
-from generate.scene import NaiveMapQuerier, OnlineConfig, SceneBuilder
+from generate import IntersectionReader
+from generate.map import NaiveMapQuerier
+from generate.scene import OnlineConfig, SceneBuilder
 from generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from generate.scene.v2_1.trajectron_scene import (
+        standardization, print_and_reset_specs, plot_trajectron_scene)
 
+"""In-simulation control method."""
+
+def load_model(model_dir, env, ts=3999, device='cpu'):
+    model_registrar = ModelRegistrar(model_dir, device)
+    model_registrar.load_models(ts)
+    with open(os.path.join(model_dir, 'config.json'), 'r') as config_json:
+        hyperparams = json.load(config_json)
+
+    hyperparams['map_enc_dropout'] = 0.0
+    if 'incl_robot_node' not in hyperparams:
+        hyperparams['incl_robot_node'] = False
+
+    stg = Trajectron(model_registrar, hyperparams,  None, device)
+    stg.set_environment(env)
+    stg.set_annealing_params()
+    return stg, hyperparams
 
 def generate_vehicle_latents(
             eval_stg, scene, timesteps,
@@ -124,11 +169,11 @@ def generate_vehicle_latents(
     z = z.cpu().detach().numpy()
     # z has shape (number of samples, number of vehicles, number of latent values)
     # z[i,j] gives the latent for sample i of vehicle j
-#     print(z.shape)
+    # print(z.shape)
     
     predictions = predictions.cpu().detach().numpy()
     # predictions has shape (number of samples, number of vehicles, prediction horizon, D)
-#     print(predictions.shape)
+    # print(predictions.shape)
 
     predictions_dict = dict()
     for i, ts in enumerate(timesteps_o):
@@ -145,7 +190,7 @@ def generate_vehicle_latents(
 class OVehicle(object):
 
     @classmethod
-    def from_trajectron(cls, node_id, ground_truth, past,
+    def from_trajectron(cls, node, T, ground_truth, past,
             latent_pmf, predictions, filter_pmf=0.1):
         """
         Parameters
@@ -164,7 +209,7 @@ class OVehicle(object):
             Each set of prediction corresponding to a latent is size (number of preds, T_v, 2)
         """
         n_states = len(predictions)
-        n_predictions = sum([p.shape[0] for p in pred_positions])
+        n_predictions = sum([p.shape[0] for p in predictions])
         
         """Heejin's control code"""
         pos_last = past[-1]
@@ -231,11 +276,12 @@ class OVehicle(object):
             n_p = masked_pred_positions[idx].shape[0]
             masked_latent_pmf[idx] = n_p / float(masked_n_predictions)
         
-        return cls(T, past, ground_truth, masked_latent_pmf, masked_pred_positions,
-                masked_pred_yaws, masked_init_center)
+        return cls(node, T, past, ground_truth, masked_latent_pmf,
+                masked_pred_positions, masked_pred_yaws, masked_init_center)
 
-    def __init__(self, T, past, ground_truth, latent_pmf, pred_positions,
-            pred_yaws, init_center):
+    def __init__(self, node, T, past, ground_truth, latent_pmf,
+            pred_positions, pred_yaws, init_center):
+        self.node = node
         self.T = T
         self.past = past
         self.ground_truth = ground_truth
@@ -243,15 +289,8 @@ class OVehicle(object):
         self.pred_positions = pred_positions
         self.pred_yaws = pred_yaws
         self.init_center = init_center
-        pos_last = past[-1]
-        pos_prev = past[-4] # index this?
-        self.p0 = pos_last
-        self.yaw0 = np.arctan2(
-                pos_last[1] - pos_prev[1],
-                pos_last[0] - pos_prev[0])
         self.n_states = self.latent_pmf.size
         self.n_predictions = sum([p.shape[0] for p in self.pred_positions])
-
 
 def get_vertices_from_center(center, heading, lw):
     vertices = np.empty((8,))
@@ -272,6 +311,21 @@ def get_vertices_from_center(center, heading, lw):
     vertices[4:6] = center + 0.5 * rot3 @ lw
     vertices[6:8] = center + 0.5 * rot4 @ lw
     return vertices
+
+def obj_matmul(A, B):
+    """Non-vectorized multiplication of arrays of object dtype"""
+    if len(B.shape) == 1:
+        C = np.zeros((A.shape[0]), dtype=object)
+        for i in range(A.shape[0]):
+            for k in range(A.shape[1]):
+                C[i] += A[i,k]*B[k]
+    else:
+        C = np.zeros((A.shape[0], B.shape[1]), dtype=object)
+        for i in range(A.shape[0]):
+            for j in range(B.shape[1]):
+                for k in range(A.shape[1]):
+                    C[i,j] += A[i,k]*B[k,j]
+    return C
 
 def get_approx_union(theta, vertices):
     """Gets A_t, b_0 for the contraint set A_t x >= b_0
@@ -296,6 +350,19 @@ def get_approx_union(theta, vertices):
     a3 = np.max(At @ vertices[:, 6:8].T, axis=1)
     b0 = np.max(np.stack((a0, a1, a2, a3)), axis=0)
     return At, b0
+
+def plot_h_polyhedron(ax, A, b, fc='none', ec='none', alpha=0.3):
+    """
+    A x < b is the H-representation
+    [A; b], A x + b < 0 is the format for HalfspaceIntersection
+    """
+    Ab = np.concatenate((A, -b[...,None],), axis=-1)
+    res = scipy.optimize.linprog([0, 0], A_ub=Ab[:,:2], b_ub=-Ab[:,2])
+    print(res.success)
+    hs = scipy.spatial.HalfspaceIntersection(Ab, res.x)
+    ch = scipy.spatial.ConvexHull(hs.intersections)
+    x, y = zip(*hs.intersections[ch.vertices])
+    ax.fill(x, y, fc=fc, ec=ec, alpha=0.3)
 
 def get_ovehicle_color_set():
     OVEHICLE_COLORS = [
@@ -326,10 +393,15 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             map_reader,
             other_vehicle_ids,
             eval_stg,
+            predict_interval=6,
+            n_burn_interval=4,
+            prediction_horizon=8,
+            n_predictions=100,
             scene_config=OnlineConfig()):
         
         self.__ego_vehicle = ego_vehicle
         self.__map_reader = map_reader
+        self.__world = self.__ego_vehicle.get_world()
 
         # __first_frame : int
         #     First frame in simulation. Used to find current timestep.
@@ -337,10 +409,10 @@ class LCSSHighLevelAgent(AbstractDataCollector):
 
         self.__scene_builder = None
         self.__scene_config = scene_config
-        self.__predict_interval = 6
-        self.__n_burn_interval = 4
-        self.__prediction_horizon = 8
-        self.__n_predictions = 100
+        self.__predict_interval = predict_interval
+        self.__n_burn_interval = n_burn_interval
+        self.__prediction_horizon = prediction_horizon
+        self.__n_predictions = n_predictions
         self.__eval_stg = eval_stg
 
         vehicles = self.__world.get_actors(other_vehicle_ids)
@@ -364,7 +436,7 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         # We need to pass the lambda a weak reference to
         # self to avoid circular reference.
         weak_self = weakref.ref(self)
-        self.__sensor.listen(lambda image: DataCollector.parse_image(weak_self, image))
+        self.__sensor.listen(lambda image: type(self).parse_image(weak_self, image))
     
     def stop_sensor(self):
         """Stop the sensor."""
@@ -387,19 +459,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
     def T(self):
         return self.__prediction_horizon
 
-    def do_first_step(self, first_frame):
-        self.__first_frame = first_frame
-        self.__scene_builder = TrajectronPlusPlusSceneBuilder(
-            self,
-            self.__map_reader,
-            self.__ego_vehicle,
-            self.__other_vehicles,
-            self.__lidar_feeds,
-            "test",
-            self.__first_frame,
-            scene_config=self.__scene_config,
-            debug=True)
-
     def do_prediction(self, frame):
 
         """Construct online scene"""
@@ -411,20 +470,24 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         timesteps = np.array([timestep])
         with torch.no_grad():
             z, predictions, nodes, predictions_dict, latent_probs = generate_vehicle_latents(
-                    self.__eval_stg, scene, timesteps, num_samples=200, ph=8,
+                    self.__eval_stg, scene, timesteps,
+                    num_samples=self.__n_predictions,
+                    ph=self.__prediction_horizon,
                     z_mode=False, gmm_mode=False, full_dist=False, all_z_sep=False)
 
         _, past_dict, ground_truth_dict = \
-            prediction_output_to_trajectories(
-                predictions, dt=scene.dt, max_h=10, ph=self.__prediction_horizon, map=None)
+                prediction_output_to_trajectories(
+                    predictions_dict, dt=scene.dt, max_h=10,
+                    ph=self.__prediction_horizon, map=None)
         return util.AttrDict(scene=scene, timestep=timestep, nodes=nodes,
-                predictions=predictions, z=z,
+                predictions=predictions, z=z, latent_probs=latent_probs,
                 past_dict=past_dict, ground_truth_dict=ground_truth_dict)
         
     def make_ovehicles(self, result):
         scene, timestep, nodes = result.scene, result.timestep, result.nodes
         predictions, latent_probs, z = result.predictions, result.latent_probs, result.z
-        
+        past_dict, ground_truth_dict = result.past_dict, result.ground_truth_dict
+
         """Preprocess predictions"""
         minpos = np.array([scene.x_min, scene.y_min])
         ovehicles = []
@@ -435,11 +498,16 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             veh_past       = past_dict[timestep][node] + minpos
             veh_predict    = predictions[idx] + minpos
             veh_latent_pmf = latent_probs[idx]
+            n_states = veh_latent_pmf.size
             zn = z[idx]
-            veh_latent_predictions = [[] for x in range(25)]
+            veh_latent_predictions = [[] for x in range(n_states)]
             for jdx, p in enumerate(veh_predict):
                 veh_latent_predictions[zn[jdx]].append(p)
-            ovehicle = OVehicle(repr(node), veh_gt, veh_past,
+            for jdx in range(n_states):
+                veh_latent_predictions[jdx] = np.array(veh_latent_predictions[jdx])
+            
+            ovehicle = OVehicle.from_trajectron(node,
+                    self.__prediction_horizon, veh_gt, veh_past,
                     veh_latent_pmf, veh_latent_predictions)
             ovehicles.append(ovehicle)
         
@@ -447,7 +515,9 @@ class LCSSHighLevelAgent(AbstractDataCollector):
     
     def make_highlevel_params(self, ovehicles):
         p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
+        p_0_y = -p_0_y # need to flip about x-axis
         v_0_x, v_0_y, _ = carlautil.actor_to_velocity_ndarray(self.__ego_vehicle)
+        v_0_y = -v_0_y # need to flip about x-axis
         
         """Get LCSS parameters"""
         # TODO: refactor this long chain
@@ -570,15 +640,17 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         
         plot_vertices = False
         if plot_vertices:
-            t = 7
+            t = self.__prediction_horizon - 1
+            latent_idx = 0
+            ov_idx = 0
             # for ovehicle in scene.ovehicles:
-            X = vertices[t][0][1][:,0:2].T
+            X = vertices[t][latent_idx][ov_idx][:,0:2].T
             plt.scatter(X[0], X[1], c='r', s=2)
-            X = vertices[t][0][1][:,2:4].T
+            X = vertices[t][latent_idx][ov_idx][:,2:4].T
             plt.scatter(X[0], X[1], c='b', s=2)
-            X = vertices[t][0][1][:,4:6].T
+            X = vertices[t][latent_idx][ov_idx][:,4:6].T
             plt.scatter(X[0], X[1], c='g', s=2)
-            X = vertices[t][0][1][:,6:8].T
+            X = vertices[t][latent_idx][ov_idx][:,6:8].T
             plt.scatter(X[0], X[1], c='orange', s=2)
             plt.gca().set_aspect('equal')
             plt.show()
@@ -606,7 +678,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         if plot_overapprox:
             fig, ax = plt.subplots()
             t = 7
-            # for ovehicle in scene.ovehicles:
             ovehicle = ovehicles[1]
             ps = ovehicle.pred_positions[0][:,t].T
             ax.scatter(ps[0], ps[1], c='r', s=2)
@@ -663,8 +734,16 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         model.add_constraints([z <= -t3 for z in -u2 - t1*u1])
 
         X = np.stack([x1, x2])
-        Rot = evehicle.Rot
-        X = obj_matmul(Rot, X).T + evehicle.p0
+        p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
+        p_0_y = -p_0_y # need to flip about x-axis
+        p0 = np.array([p_0_x, p_0_y])
+        _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
+         # need to flip about x-axis
+        heading = util.reflect_radians_about_x_axis(heading)
+        Rot = np.array([
+                [np.cos(heading), -np.sin(heading)],
+                [np.sin(heading),  np.cos(heading)]])
+        X = obj_matmul(Rot, X).T + p0
 
         T, K, diag = params.T, params.K, params.diag
 
@@ -682,11 +761,14 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                     model.add_constraint(np.sum(delta[indices, t]) >= 1)
         
         # cost = x2[-1]**2 + x3[-1]**2 + x4[-1]**2 - 0.01*x1[-1]
-        # start from spawn point 2
+        # start from current vehicle position
         p_x, p_y, _ = carlautil.actor_to_location_ndarray(
                 self.__ego_vehicle)
-        final_x, final_y = p_x + 50, p_y
-        cost = (x3[-1] - final_x)**2 + (x4[-1] - final_y)**2
+        p_y = -p_y # need to flip about x-axis
+        goal_x, goal_y = p_x + 50, p_y
+        start = np.array([p_x, p_y])
+        goal = np.array([goal_x, goal_y])
+        cost = (x3[-1] - goal_x)**2 + (x4[-1] - goal_y)**2
         model.minimize(cost)
         # model.print_information()
         s = model.solve()
@@ -696,48 +778,70 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         cost = cost.solution_value
         x1 = np.array([x1i.solution_value for x1i in x1])
         x2 = np.array([x2i.solution_value for x2i in x2])
-        X = np.stack((x1, x2))
-        X_star = (Rot @ X).T + evehicle.p0
-        X_star = np.concatenate((evehicle.p0[None], X_star,))
+        X_star = np.stack((x1, x2)).T
         return util.AttrDict(cost=cost, u_star=u_star, X_star=X_star,
-                A_union=A_union, b_union=b_union, vertices=vertices)
+                A_union=A_union, b_union=b_union, vertices=vertices,
+                start=start, goal=goal)
 
-    def __capture_prediction_step(frame):
+    def __capture_prediction_step(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
-        params = self.make_highlevel_params(ovehicles):
+        params = self.make_highlevel_params(ovehicles)
         ctrl_result = self.do_highlevel_control(params, ovehicles)
 
         _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
+         # need to flip about x-axis
+        heading = util.reflect_radians_about_x_axis(heading)
+        t = self.__prediction_horizon - 1
 
         """Plots for paper"""
         ovehicle_colors = get_ovehicle_color_set()
         fig, ax = plt.subplots()
-        t = self.__prediction_horizon - 1
+
+        """Get scene bitmap"""
+        scene = pred_result.scene
+        map_mask = scene.map['VISUALIZATION'].as_image()
+        road_bitmap = np.max(map_mask, axis=2)
+        road_div_bitmap = map_mask[..., 1]
+        lane_div_bitmap = map_mask[..., 0]
+        extent = (scene.x_min, scene.x_max, scene.y_min, scene.y_max)
+        ax.imshow(road_bitmap, extent=extent, origin='lower',
+                cmap=clr.ListedColormap(['none', 'grey']))
+        ax.imshow(road_div_bitmap, extent=extent, origin='lower',
+                cmap=clr.ListedColormap(['none', 'yellow']))
+        ax.imshow(lane_div_bitmap, extent=extent, origin='lower',
+                cmap=clr.ListedColormap(['none', 'silver']))
+
+        plt.plot(ctrl_result.start[0], ctrl_result.start[1],
+                marker='*', markersize=8, color="blue")
+        plt.plot(ctrl_result.goal[0], ctrl_result.goal[1],
+                marker='*', markersize=8, color="green")
 
         # Plot ego vehicle
-        ax.plot(result.X_star[:, 0], result.X_star[:, 1], 'k-o')
+        ax.plot(ctrl_result.X_star[:, 0], ctrl_result.X_star[:, 1], 'k-o')
 
         # Get vertices of EV and plot its bounding box
         vertices = get_vertices_from_center(
-                result.X_star[-1], heading, params.truck.d)
+                ctrl_result.X_star[-1], heading, params.truck.d)
         bb = patches.Polygon(vertices.reshape((-1,2,)),
                 closed=True, color='k', fc='none')
         ax.add_patch(bb)
-
+        self.__other_vehicles
         # Plot other vehicles
         for ov_idx, ovehicle in enumerate(ovehicles):
+            color = ovehicle_colors[ov_idx][0]
+            ax.plot(ovehicle.past[:,0], ovehicle.past[:,1],
+                    marker='D', markersize=3, color=color)
             for latent_idx in range(ovehicle.n_states):
                 color = ovehicle_colors[ov_idx][latent_idx]
-                # ps = ovehicle.pred_positions[latent_idx]
-
+                
                 # Plot overapproximation
-                A = result.A_union[t][latent_idx][ov_idx]
-                b = result.b_union[t][latent_idx][ov_idx]
+                A = ctrl_result.A_union[t][latent_idx][ov_idx]
+                b = ctrl_result.b_union[t][latent_idx][ov_idx]
                 plot_h_polyhedron(ax, A, b, ec=color, alpha=1)
 
                 # Plot vertices
-                vertices = result.vertices[t][latent_idx][ov_idx]
+                vertices = ctrl_result.vertices[t][latent_idx][ov_idx]
                 X = vertices[:,0:2].T
                 ax.scatter(X[0], X[1], color=color, s=2)
                 X = vertices[:,2:4].T
@@ -748,22 +852,32 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                 ax.scatter(X[0], X[1], color=color, s=2)
 
         ax.set_aspect('equal')
-        ax.set_facecolor("grey")
+        # ax.set_facecolor("grey")
         plt.show()
-        raise Exception("ASDF")
+
+    def do_first_step(self, frame):
+        self.__first_frame = frame
+        self.__scene_builder = TrajectronPlusPlusSceneBuilder(
+            self,
+            self.__map_reader,
+            self.__ego_vehicle,
+            self.__other_vehicles,
+            self.__lidar_feeds,
+            "test",
+            self.__first_frame,
+            scene_config=self.__scene_config,
+            debug=True)
 
     def capture_step(self, frame):
+        logging.debug(f"In LCSSHighLevelAgent.capture_step() with frame = {frame}")
         if self.__first_frame is None:
             self.do_first_step(frame)
         
         self.__scene_builder.capture_trajectory(frame)
         
-        """Initially collect data without doing anything to the vehicle."""
-        if frame - self.__first_frame < self.__n_burn_frames:
-            return
-
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
+            """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
                 return
             if (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
@@ -785,8 +899,8 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             return
         logging.debug(f"in DataCollector.parse_image() player = {self.__ego_vehicle.id} frame = {image.frame}")
         self.__lidar_feeds[image.frame] = image
-        for scene_builder in list(self.__scene_builders.values()):
-            scene_builder.capture_lidar(image)
+        if self.__scene_builder:
+            self.__scene_builder.capture_lidar(image)
 
     # def get_speed(self):
     #     self.vehicle.get_velocity()
@@ -799,12 +913,20 @@ class LCSSHighLevelAgent(AbstractDataCollector):
 
 class OnlineManager(object):
     
-    def __init__(self):
+    def __init__(self, args):
+        self.args = args
+        self.delta = 0.1
         
+        """Load dummy dataset."""
+        dataset_path = 'carla_v2_1_dataset/carla_test_v2_1_full.pkl'
+        with open(dataset_path, 'rb') as f:
+            eval_env = dill.load(f, encoding='latin1')
+
         """Load model."""
-        model_dir = 'models/20210622'
+        model_dir = 'experiments/nuScenes/models/20210622'
         model_name = 'models_19_Mar_2021_22_14_19_int_ee_me_ph8'
-        model_path = os.path.join(model_dir, model_name)
+        model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
+                model_dir, model_name)
         self.eval_stg, self.stg_hyp = load_model(
                 model_path, eval_env, ts=20)#, device='cuda:0')
 
@@ -814,22 +936,20 @@ class OnlineManager(object):
         self.world = self.client.get_world()
         self.carla_map = self.world.get_map()
         self.traffic_manager = self.client.get_trafficmanager(8000)
-        self.intersection_reader = IntersectionReader(
-                self.world, self.carla_map, debug=self.args.debug)
         self.map_reader = NaiveMapQuerier(
                 self.world, self.carla_map, debug=self.args.debug)
-        self.online_config = OnlineConfig()
+        self.online_config = OnlineConfig(node_type=eval_env.NodeType)
 
     
     def create_agents(self, params):
         spawn_points = self.carla_map.get_spawn_points()
-        blueprint = self.world.get_blueprint_library().find('vehicle.audi.a2')
         spawn_point = spawn_points[params.ego_spawn_idx]
+        blueprint = self.world.get_blueprint_library().find('vehicle.audi.a2')
         params.ego_vehicle = self.world.spawn_actor(blueprint, spawn_point)
 
         other_vehicle_ids = []
-        blueprints = get_all_vehicle_blueprints(world)
-        for idx in other_spawn_ids:
+        blueprints = get_all_vehicle_blueprints(self.world)
+        for idx in params.other_spawn_ids:
             blueprint = np.random.choice(blueprints)
             spawn_point = spawn_points[idx]
             other_vehicle = self.world.spawn_actor(blueprint, spawn_point)
@@ -847,7 +967,7 @@ class OnlineManager(object):
         params.agent.start_sensor()
         return params
 
-    def run(self):
+    def test_scenario(self):
         params = util.AttrDict(ego_spawn_idx=2, other_spawn_ids=[104, 102, 235],
                 ego_vehicle=None, other_vehicles=[], agent=None)
         n_burn_frames = 3*self.online_config.record_interval
@@ -858,7 +978,8 @@ class OnlineManager(object):
             for idx in range(n_burn_frames \
                     + 30*self.online_config.record_interval):
                 frame = self.world.tick()
-                agent = capture_step(frame)
+                agent.capture_step(frame)
+
         finally:
             if params.agent:
                 params.agent.destroy()
@@ -867,10 +988,72 @@ class OnlineManager(object):
             for other_vehicle in params.other_vehicles:
                 other_vehicle.destroy()
 
+    def run(self):
+        """Main entry point to simulatons."""
+        original_settings = None
+
+        try:
+            logging.info("Enabling synchronous setting and updating traffic manager.")
+            original_settings = self.world.get_settings()
+            settings = self.world.get_settings()
+            settings.fixed_delta_seconds = self.delta
+            settings.synchronous_mode = True
+
+            self.traffic_manager.set_synchronous_mode(True)
+            self.traffic_manager.set_global_distance_to_leading_vehicle(1.0)
+            self.traffic_manager.global_percentage_speed_difference(0.0)
+            self.world.apply_settings(settings)
+            self.test_scenario()
+
+        finally:
+            logging.info("Reverting to original settings.")
+            if original_settings:
+                self.world.apply_settings(original_settings)
+
+def dir_path(s):
+    if os.path.isdir(s):
+        return s
+    else:
+        raise argparse.ArgumentTypeError(
+                f"readable_dir:{s} is not a valid path")
+
+def main():
+    """Main method"""
+
+    argparser = argparse.ArgumentParser(
+            description='CARLA Automatic Control Client')
+    argparser.add_argument(
+        '-v', '--verbose',
+        action='store_true',
+        dest='debug',
+        help='Show debug information')
+    argparser.add_argument(
+        '--host',
+        metavar='H',
+        default='127.0.0.1',
+        help='IP of the host server (default: 127.0.0.1)')
+    argparser.add_argument(
+        '-p', '--port',
+        metavar='P',
+        default=2000,
+        type=int,
+        help='TCP port to listen to (default: 2000)')
+    
+    args = argparser.parse_args()
+    log_level = logging.DEBUG if args.debug else logging.INFO
+    logging.basicConfig(format='%(asctime)s: %(levelname)s: %(message)s', level=log_level)
+    logging.info('listening to server %s:%s', args.host, args.port)
+    print(__doc__)
+
+    try:
+        mgr = OnlineManager(args)
+        mgr.run()
+
+    except KeyboardInterrupt:
+        print('\nCancelled by user. Bye!')
 
 if __name__ == '__main__':
-    mgr = OnlineManager()
-    mgr.run()
+    main()
 
 # control = carla.Vehicle(
 #         throttle=0.0, steer=0.0, brake=0.0, 

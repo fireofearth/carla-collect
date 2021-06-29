@@ -10,7 +10,7 @@ import carla
 
 from generate import get_all_vehicle_blueprints
 from generate import NaiveMapQuerier
-from control import LCSSHighLevelAgent, load_model
+from in_simulation import LCSSHighLevelAgent, load_model
 from generate.scene import OnlineConfig
 
 """
@@ -22,8 +22,8 @@ def test_straight_road(carla_Town03_synchronous):
     agent = None
     other_vehicles = []
     ego_spawn_idx = 2
-    other_spawn_ids = [104, 102, 235]
-    n_burn_interval = 4
+    other_spawn_ids = [184, 208]
+    n_burn_interval = 23
     predict_interval = 6
     prediction_horizon = 8
     n_predictions = 100
