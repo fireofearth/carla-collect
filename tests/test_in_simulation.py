@@ -1,6 +1,7 @@
 import os
 
 import dill
+import logging
 import pytest
 import numpy as np
 import matplotlib.pyplot as plt
@@ -24,7 +25,7 @@ def test_straight_road(carla_Town03_synchronous):
     ego_spawn_idx = 2
     other_spawn_ids = [184, 208]
     n_burn_interval = 23
-    predict_interval = 6
+    predict_interval = 8
     prediction_horizon = 8
     n_predictions = 100
     client, world, carla_map, traffic_manager = carla_Town03_synchronous
@@ -79,7 +80,7 @@ def test_straight_road(carla_Town03_synchronous):
         predict_frames = predict_interval*online_config.record_interval - 1
         for idx in range(n_burn_frames + predict_frames):
             frame = world.tick()
-            agent.capture_step(frame)
+            agent.run_step(frame)
  
     finally:
         if agent:

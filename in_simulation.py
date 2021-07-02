@@ -1,3 +1,5 @@
+"""In-simulation control method."""
+
 import sys
 import os
 import json
@@ -36,7 +38,7 @@ import carlautil.debug
 try:
     from agents.tools.misc import is_within_distance_ahead, is_within_distance, compute_distance
     from agents.navigation.controller import VehiclePIDController
-    from agents.navigation.local_planner_behavior import LocalPlanner
+    # from agents.navigation.local_planner_behavior import LocalPlanner
     from agents.tools.misc import distance_vehicle, draw_waypoints
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link carla/PythonAPI/carla")
@@ -48,10 +50,6 @@ except ModuleNotFoundError as e:
 #     raise Exception("You forgot to link trajectron-plus-plus/experiments/nuScenes")
 
 try:
-    # trajectron-plus-plus/trajectron
-    # from environment import Environment, Scene, Node
-    # from environment import GeometricMap, derivative_of
-    # from model.components import *
     from utils.trajectory_utils import prediction_output_to_trajectories
     from environment import Environment
     from model.dataset import get_timesteps_data
@@ -61,6 +59,7 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
+from controller import LocalPlanner
 from generate import AbstractDataCollector
 from generate import create_semantic_lidar_blueprint, get_all_vehicle_blueprints
 from generate import IntersectionReader
@@ -69,8 +68,6 @@ from generate.scene import OnlineConfig, SceneBuilder
 from generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
 from generate.scene.v2_1.trajectron_scene import (
         standardization, print_and_reset_specs, plot_trajectron_scene)
-
-"""In-simulation control method."""
 
 def load_model(model_dir, env, ts=3999, device='cpu'):
     model_registrar = ModelRegistrar(model_dir, device)
@@ -183,7 +180,6 @@ def generate_vehicle_latents(
     
     z = np.swapaxes(np.argmax(z, axis=-1), 0, 1)
     predictions = np.swapaxes(predictions, 0, 1)
-        
     return z, predictions, nodes, predictions_dict, latent_probs
 
 
@@ -213,11 +209,6 @@ class OVehicle(object):
         
         """Heejin's control code"""
         pos_last = past[-1]
-        pos_prev = past[-4] # index this?
-        p0 = pos_last
-        yaw0 = np.arctan2(
-                pos_last[1] - pos_prev[1],
-                pos_last[0] - pos_prev[0])
         # Masking to get relevant predictions.
         latent_mask = np.argwhere(latent_pmf > filter_pmf).ravel()
         masked_n_predictions = 0
@@ -358,7 +349,6 @@ def plot_h_polyhedron(ax, A, b, fc='none', ec='none', alpha=0.3):
     """
     Ab = np.concatenate((A, -b[...,None],), axis=-1)
     res = scipy.optimize.linprog([0, 0], A_ub=Ab[:,:2], b_ub=-Ab[:,2])
-    print(res.success)
     hs = scipy.spatial.HalfspaceIntersection(Ab, res.x)
     ch = scipy.spatial.ConvexHull(hs.intersections)
     x, y = zip(*hs.intersections[ch.vertices])
@@ -430,7 +420,7 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         #     is a carla.LidarMeasurement or carla.SemanticLidarMeasurement
         self.__lidar_feeds = collections.OrderedDict()
 
-        self.__local_planner = LocalPlanner(self)
+        self.__local_planner = LocalPlanner(self.__ego_vehicle)
 
     def start_sensor(self):
         # We need to pass the lambda a weak reference to
@@ -450,14 +440,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         """Release all the CARLA resources used by this collector."""
         self.__sensor.destroy()
         self.__sensor = None
-
-    @property
-    def vehicle(self):
-        return self.__ego_vehicle
-    
-    @property
-    def T(self):
-        return self.__prediction_horizon
 
     def do_prediction(self, frame):
 
@@ -746,7 +728,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         X = obj_matmul(Rot, X).T + p0
 
         T, K, diag = params.T, params.K, params.diag
-
         for ov_idx, ovehicle in enumerate(ovehicles):
             n_states = ovehicle.n_states
             sum_clu = np.sum(K[:ov_idx])
@@ -783,14 +764,14 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
-    def __capture_prediction_step(self, frame):
+    def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
         params = self.make_highlevel_params(ovehicles)
         ctrl_result = self.do_highlevel_control(params, ovehicles)
 
         _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
-         # need to flip about x-axis
+        # need to flip about x-axis
         heading = util.reflect_radians_about_x_axis(heading)
         t = self.__prediction_horizon - 1
 
@@ -826,7 +807,7 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         bb = patches.Polygon(vertices.reshape((-1,2,)),
                 closed=True, color='k', fc='none')
         ax.add_patch(bb)
-        self.__other_vehicles
+        
         # Plot other vehicles
         for ov_idx, ovehicle in enumerate(ovehicles):
             color = ovehicle_colors[ov_idx][0]
@@ -852,8 +833,25 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                 ax.scatter(X[0], X[1], color=color, s=2)
 
         ax.set_aspect('equal')
-        # ax.set_facecolor("grey")
         plt.show()
+
+        """Get trajectory"""
+        trajectory = []
+        x, y, _ = carlautil.actor_to_location_ndarray(
+                self.__ego_vehicle)
+        X = np.concatenate((np.array([x, y])[None], ctrl_result.X_star))
+        n_steps = X.shape[0]
+        for t in range(1, n_steps):
+            x, y = X[t]
+            y = -y
+            yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
+            yaw = util.reflect_radians_about_x_axis(yaw)
+            transform = carla.Transform(
+                    carla.Location(x=x, y=y),
+                    carla.Rotation(yaw=yaw))
+            trajectory.append(transform)
+
+        return trajectory
 
     def do_first_step(self, frame):
         self.__first_frame = frame
@@ -868,20 +866,23 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             scene_config=self.__scene_config,
             debug=True)
 
-    def capture_step(self, frame):
-        logging.debug(f"In LCSSHighLevelAgent.capture_step() with frame = {frame}")
+    def run_step(self, frame):
+        logging.debug(f"In LCSSHighLevelAgent.run_step() with frame = {frame}")
         if self.__first_frame is None:
             self.do_first_step(frame)
         
         self.__scene_builder.capture_trajectory(frame)
-        
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
                 return
             if (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
-                self.__capture_prediction_step(frame)
+                trajectory = self.__compute_prediction_controls(frame)
+                self.__local_planner.set_plan(trajectory, self.__scene_config.record_interval)
+
+        control = self.__local_planner.run_step()
+        self.__ego_vehicle.apply_control(control)
 
     def remove_scene_builder(self, first_frame):
         raise Exception(f"Can't remove scene builder from {util.classname(x)}.")
@@ -902,14 +903,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         if self.__scene_builder:
             self.__scene_builder.capture_lidar(image)
 
-    # def get_speed(self):
-    #     self.vehicle.get_velocity()
-    #     return math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
-    
-    # def update_information(self):
-    #     """Update agent's sensor data."""
-    #     self.speed = get_speed(self.vehicle)
-    #     self.speed_limit = self.vehicle.get_speed_limit()
 
 class OnlineManager(object):
     
@@ -978,7 +971,7 @@ class OnlineManager(object):
             for idx in range(n_burn_frames \
                     + 30*self.online_config.record_interval):
                 frame = self.world.tick()
-                agent.capture_step(frame)
+                agent.run_step(frame)
 
         finally:
             if params.agent:
