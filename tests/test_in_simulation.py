@@ -9,10 +9,17 @@ import matplotlib.colors as colors
 import matplotlib.cm as cm
 import carla
 
-from generate import get_all_vehicle_blueprints
-from generate import NaiveMapQuerier
-from in_simulation import LCSSHighLevelAgent, load_model
-from generate.scene import OnlineConfig
+try:
+    # imports from trajectron-plus-plus/trajectron
+    from environment import Environment, Scene
+except ModuleNotFoundError as e:
+    raise Exception("You forgot to link trajectron-plus-plus/trajectron")
+
+from collect.generate import get_all_vehicle_blueprints
+from collect.generate import NaiveMapQuerier
+from collect.in_simulation import LCSSHighLevelAgent, load_model
+from collect.generate.scene import OnlineConfig
+from collect.generate.scene.v2_1.trajectron_scene import (standardization)
 
 """
 pytest --log-cli-level=INFO --capture=tee-sys -vv
@@ -31,9 +38,14 @@ def test_straight_road(carla_Town03_synchronous):
     client, world, carla_map, traffic_manager = carla_Town03_synchronous
 
     """Load dummy dataset."""
-    dataset_path = 'carla_v2_1_dataset/carla_test_v2_1_full.pkl'
-    with open(dataset_path, 'rb') as f:
-        eval_env = dill.load(f, encoding='latin1')
+    eval_scene = Scene(timesteps=25, dt=0.5, name='test')
+    eval_env = Environment(node_type_list=['VEHICLE'],
+            standardization=standardization)
+    attention_radius = dict()
+    attention_radius[(eval_env.NodeType.VEHICLE, eval_env.NodeType.VEHICLE)] = 30.0
+    eval_env.attention_radius = attention_radius
+    eval_env.robot_type = eval_env.NodeType.VEHICLE
+    eval_env.scenes = [eval_scene]
 
     """Load model."""
     model_dir = 'experiments/nuScenes/models/20210622'

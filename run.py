@@ -40,13 +40,13 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from generate import (
+from collect.generate import (
         get_all_vehicle_blueprints,
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
-from generate import SceneConfig
-from generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
-from generate.scene.v2_1.trajectron_scene import (
+from collect.generate import SceneConfig
+from collect.generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from collect.generate.scene.v2_1.trajectron_scene import (
         standardization, print_and_reset_specs, plot_trajectron_scene)
 
 class DataGenerator(object):
