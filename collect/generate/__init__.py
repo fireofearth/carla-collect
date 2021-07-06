@@ -60,6 +60,7 @@ def create_semantic_lidar_blueprint(world):
 
 
 class AbstractDataCollector(ABC):
+    """Data collector that holds scenes of instance SceneBuilder."""
 
     @abstractmethod
     def remove_scene_builder(self, frame):
