@@ -13,10 +13,10 @@ import utility as util
 
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-from collect.in_simulation.midlevel.v2 import MidlevelAgent
+from collect.in_simulation.midlevel.v1 import LCSSHighLevelAgent
 from collect.generate.scene import OnlineConfig
 
-"""Test the v2 midlevel controller
+"""Test simulation of LCSSHighLevelAgent, the v1 midlevel controller
 
 pytest --log-cli-level=INFO --capture=tee-sys -vv
 """
@@ -47,30 +47,6 @@ SCENARIO_ovehicle_turn = pytest.param(
     id='ovehicle_turn'
 )
 
-CONTROL_move_down = util.AttrDict(
-    interval=(9*5, 14*5,),
-    control=carla.VehicleControl(throttle=0.5)
-)
-GOAL_move_down = util.AttrDict(
-        x=0, y=-50, is_relative=True)
-SCENARIO_move_down = pytest.param(
-    # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
-    126, [58], 15, [CONTROL_move_down], GOAL_move_down,
-    id='move_down'
-)
-
-CONTROL_move_up = util.AttrDict(
-    interval=(9*5, 14*5,),
-    control=carla.VehicleControl(throttle=0.5)
-)
-GOAL_move_up = util.AttrDict(
-        x=0, y=50, is_relative=True)
-SCENARIO_move_up = pytest.param(
-    # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
-    58, [126], 15, [CONTROL_move_up], GOAL_move_up,
-    id='move_up'
-)
-
 CONTROL_merge_lane = util.AttrDict(
     interval=(26*5, 35*5,),
     control=carla.VehicleControl(throttle=0.6)
@@ -95,17 +71,6 @@ SCENARIO_ego_lane_switch_2 = pytest.param(
     # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
     360, [359, 358], 20, [CONTROL_ego_lane_switch], GOAL_ego_lane_switch,
     id='ego_lane_switch_1'
-)
-
-CONTROL_move_left = util.AttrDict(
-        interval=(0*5, 19*5,),
-        control=carla.VehicleControl(throttle=0.58))
-GOAL_move_left = util.AttrDict(
-        x=-50, y=0, is_relative=True)
-SCENARIO_move_left = pytest.param(
-    # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
-    99, [100, 101], 20, [CONTROL_move_left], GOAL_move_left,
-    id='move_left'
 )
 
 def scenario(params, eval_env, eval_stg):
@@ -140,7 +105,7 @@ def scenario(params, eval_env, eval_stg):
             other_vehicle_ids.append(other_vehicle.id)
         
         world.tick()
-        agent = MidlevelAgent(
+        agent = LCSSHighLevelAgent(
                 ego_vehicle,
                 map_reader,
                 other_vehicle_ids,
@@ -163,7 +128,7 @@ def scenario(params, eval_env, eval_stg):
             carla.Transform(
                 carla.Location(
                     x=state[0] + goal.x,
-                    y=state[1] - goal.y,
+                    y=state[1] + goal.y,
                     z=state[2] + 50
                 ),
                 carla.Rotation(pitch=-90)
@@ -197,8 +162,6 @@ def scenario(params, eval_env, eval_stg):
         SCENARIO_straight_road,
         SCENARIO_run_straight_road,
         SCENARIO_ovehicle_turn,
-        SCENARIO_move_down,
-        SCENARIO_move_up,
     ],
 )
 def test_Town03_scenario(ego_spawn_idx, other_spawn_ids, n_burn_interval, controls,
@@ -214,7 +177,6 @@ def test_Town03_scenario(ego_spawn_idx, other_spawn_ids, n_burn_interval, contro
         SCENARIO_merge_lane,
         SCENARIO_ego_lane_switch_1,
         SCENARIO_ego_lane_switch_2,
-        SCENARIO_move_left,
     ],
 )
 def test_Town06_scenario(ego_spawn_idx, other_spawn_ids, n_burn_interval, controls,

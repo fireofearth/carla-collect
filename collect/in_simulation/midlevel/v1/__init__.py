@@ -12,6 +12,7 @@ import math
 import logging
 import collections
 import weakref
+import copy
 
 import numpy as np
 import scipy.spatial
@@ -109,6 +110,16 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         self.__local_planner = LocalPlanner(self.__ego_vehicle)
 
         self.__goal = util.AttrDict(x=50, y=0, is_relative=True)
+
+    def get_vehicle_state(self):
+        """Get the vehicle state as an ndarray. State consists of
+        [pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, acc_x, acc_y, acc_z,
+        length, width, height, pitch, yaw, roll] where pitch, yaw, roll are in
+        radians."""
+        return carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle)
+
+    def get_goal(self):
+        return copy.copy(self.__goal)
 
     def set_goal(self, x, y, is_relative=True):
         self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
@@ -277,13 +288,15 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         # Bbar has shape (nx*T, nu*T) as B has shape (nx, nu)
         Bbar = np.kron(np.eye(T), B)
         # Gamma has shape (nx*(T + 1), nu*T) as Abar\Bbar has shape (nx*T, nu*T)
-        Gamma = np.concatenate((np.zeros((nx, T*nu,)), np.linalg.solve(Abar, Bbar),))
+        Gamma = np.concatenate((np.zeros((nx, T*nu,)),
+                np.linalg.solve(Abar, Bbar),))
         params.Abar = Abar
         params.Bbar = Bbar
         params.Gamma = Gamma
         A, T, x0 = params.A, params.T, params.x0
         # States_free_init has shape (nx*(T+1))
-        params.States_free_init = np.concatenate([np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
+        params.States_free_init = np.concatenate([
+                np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
         return params
 
     def do_highlevel_control(self, params, ovehicles):
@@ -402,17 +415,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         model.add_constraints([z <= -t3 for z in -u2 - t1*u1])
 
         X = np.stack([x1, x2], axis=1)
-        # p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
-        # p_0_y = -p_0_y # need to flip about x-axis
-        # p0 = np.array([p_0_x, p_0_y])
-        # _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
-        #  # need to flip about x-axis
-        # heading = util.reflect_radians_about_x_axis(heading)
-        # Rot = np.array([
-        #         [np.cos(heading), -np.sin(heading)],
-        #         [np.sin(heading),  np.cos(heading)]])
-        # X = obj_matmul(Rot, X).T + p0
-
         T, K, diag = params.T, params.K, params.diag
         for ov_idx, ovehicle in enumerate(ovehicles):
             n_states = ovehicle.n_states
