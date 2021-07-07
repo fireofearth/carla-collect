@@ -108,6 +108,11 @@ class LCSSHighLevelAgent(AbstractDataCollector):
 
         self.__local_planner = LocalPlanner(self.__ego_vehicle)
 
+        self.__goal = util.AttrDict(x=50, y=0, is_relative=True)
+
+    def set_goal(self, x, y, is_relative=True):
+        self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
+
     def start_sensor(self):
         # We need to pass the lambda a weak reference to
         # self to avoid circular reference.
@@ -229,10 +234,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         params.K = np.zeros(params.O, dtype=int)
         for idx, vehicle in enumerate(ovehicles):
             params.K[idx] = vehicle.n_states
-
-        """State and input constraints (Box constraints)"""
-        params.umin_bold = np.tile(params.umin, params.T)
-        params.umax_bold = np.tile(params.umax, params.T)
     
         """
         3rd and 4th states have COUPLED CONSTRAINTS
@@ -275,7 +276,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         Abar = np.eye(T * nx) - C
         # Bbar has shape (nx*T, nu*T) as B has shape (nx, nu)
         Bbar = np.kron(np.eye(T), B)
-        Xx = np.linalg.solve(Abar, Bbar)
         # Gamma has shape (nx*(T + 1), nu*T) as Abar\Bbar has shape (nx*T, nu*T)
         Gamma = np.concatenate((np.zeros((nx, T*nu,)), np.linalg.solve(Abar, Bbar),))
         params.Abar = Abar
@@ -283,7 +283,7 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         params.Gamma = Gamma
         A, T, x0 = params.A, params.T, params.x0
         # States_free_init has shape (nx*(T+1))
-        params.States_free_init = np.concatenate([(A**t) @ x0 for t in range(T+1)])
+        params.States_free_init = np.concatenate([np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
         return params
 
     def do_highlevel_control(self, params, ovehicles):
@@ -308,13 +308,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
 
         plot_vertices = False
         if plot_vertices:
-            """
-            To produce outer approximations, L-CSS controller expects
-            vertices to be clockwise
-            (top-left,bottom-left,bottom-right,top-right) = (red,blue,green,orange)
-            
-            Fails when i.e. red != top-left
-            """
             latent_idx = 0
             ov_idx = 0
             fig, axes = plt.subplots(2, 2, figsize=(10, 10))
@@ -344,7 +337,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
                     A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
-
                     A_union[t][latent_idx][ov_idx] = A_union_k
                     b_union[t][latent_idx][ov_idx] = b_union_k
         
@@ -355,7 +347,6 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             t = 7
             ov_idx = 0
             ovehicle = ovehicles[ov_idx]
-
             for latent_idx in range(ovehicle.n_states):
                 ps = ovehicle.pred_positions[latent_idx][:,t].T
                 ax.scatter(ps[0], ps[1], c='r', s=2)
@@ -378,7 +369,7 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             delta[k] = v
         
         x_future = params.States_free_init + obj_matmul(Gamma, u)
-        big_M = 200 # conservative upper-bound
+        big_M = 1000 # conservative upper-bound
 
         x1 = x_future[nx::nx]
         x2 = x_future[nx + 1::nx]
@@ -410,17 +401,17 @@ class LCSSHighLevelAgent(AbstractDataCollector):
         model.add_constraints([z <=  t2 for z in  u2 + t1*u1])
         model.add_constraints([z <= -t3 for z in -u2 - t1*u1])
 
-        X = np.stack([x1, x2])
-        p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
-        p_0_y = -p_0_y # need to flip about x-axis
-        p0 = np.array([p_0_x, p_0_y])
-        _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
-         # need to flip about x-axis
-        heading = util.reflect_radians_about_x_axis(heading)
-        Rot = np.array([
-                [np.cos(heading), -np.sin(heading)],
-                [np.sin(heading),  np.cos(heading)]])
-        X = obj_matmul(Rot, X).T + p0
+        X = np.stack([x1, x2], axis=1)
+        # p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
+        # p_0_y = -p_0_y # need to flip about x-axis
+        # p0 = np.array([p_0_x, p_0_y])
+        # _, heading, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
+        #  # need to flip about x-axis
+        # heading = util.reflect_radians_about_x_axis(heading)
+        # Rot = np.array([
+        #         [np.cos(heading), -np.sin(heading)],
+        #         [np.sin(heading),  np.cos(heading)]])
+        # X = obj_matmul(Rot, X).T + p0
 
         T, K, diag = params.T, params.K, params.diag
         for ov_idx, ovehicle in enumerate(ovehicles):
@@ -436,15 +427,17 @@ class LCSSHighLevelAgent(AbstractDataCollector):
                     model.add_constraints([l >= r for (l,r) in zip(lhs, rhs)])
                     model.add_constraint(np.sum(delta[indices, t]) >= 1)
         
-        # cost = x2[-1]**2 + x3[-1]**2 + x4[-1]**2 - 0.01*x1[-1]
-        # start from current vehicle position
+        # start from current vehicle position and minimize the objective
         p_x, p_y, _ = carlautil.actor_to_location_ndarray(
                 self.__ego_vehicle)
         p_y = -p_y # need to flip about x-axis
-        goal_x, goal_y = p_x + 50, p_y
+        if self.__goal.is_relative:
+            goal_x, goal_y = p_x + self.__goal.x, p_y + self.__goal.y
+        else:
+            goal_x, goal_y = self.__goal.x, self.__goal.y
         start = np.array([p_x, p_y])
         goal = np.array([goal_x, goal_y])
-        cost = (x3[-1] - goal_x)**2 + (x4[-1] - goal_y)**2
+        cost = (x1[-1] - goal_x)**2 + (x2[-1] - goal_y)**2
         model.minimize(cost)
         # model.print_information()
         s = model.solve()
@@ -505,7 +498,13 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             scene_config=self.__scene_config,
             debug=True)
 
-    def run_step(self, frame):
+    def run_step(self, frame, control=None):
+        """
+        Parameters
+        ==========
+        frame : int
+        control: carla.VehicleControl (optional)
+        """
         logging.debug(f"In LCSSHighLevelAgent.run_step() with frame = {frame}")
         if self.__first_frame is None:
             self.do_first_step(frame)
@@ -515,12 +514,13 @@ class LCSSHighLevelAgent(AbstractDataCollector):
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
-                return
-            if (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
+                pass
+            elif (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
                 trajectory = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(trajectory, self.__scene_config.record_interval)
-
-        control = self.__local_planner.run_step()
+        
+        if not control:
+            control = self.__local_planner.run_step()
         self.__ego_vehicle.apply_control(control)
 
     def remove_scene_builder(self, first_frame):

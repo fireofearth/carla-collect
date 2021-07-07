@@ -119,7 +119,8 @@ def plot_lcss_prediction_timestep(ax, map_data, ovehicles,
             marker='*', markersize=8, color="green")
 
     # Plot ego vehicle
-    ax.plot(ctrl_result.X_star[:t, 0], ctrl_result.X_star[:t, 1], 'k-o')
+    ax.plot(ctrl_result.X_star[:t, 0], ctrl_result.X_star[:t, 1],
+            'k-o', markersize=2)
 
     # Get vertices of EV and plot its bounding box
     vertices = get_vertices_from_center(
@@ -134,7 +135,7 @@ def plot_lcss_prediction_timestep(ax, map_data, ovehicles,
     for ov_idx, ovehicle in enumerate(ovehicles):
         color = ovehicle_colors[ov_idx][0]
         ax.plot(ovehicle.past[:,0], ovehicle.past[:,1],
-                marker='D', markersize=3, color=color)
+                marker='o', markersize=2, color=color)
         for latent_idx in range(ovehicle.n_states):
             color = ovehicle_colors[ov_idx][latent_idx]
             
@@ -164,7 +165,7 @@ def plot_lcss_prediction(pred_result, ovehicles,
         params, ctrl_result, T, ego_bbox):
     
     """Plots for paper"""
-    fig, axes = plt.subplots(2, 2, figsize=(10, 10))
+    fig, axes = plt.subplots(4, 2, figsize=(10, 20))
     axes = axes.ravel()
 
     """Get scene bitmap"""
@@ -176,8 +177,8 @@ def plot_lcss_prediction(pred_result, ovehicles,
     map_data.lane_div_bitmap = map_mask[..., 0]
     map_data.extent = (scene.x_min, scene.x_max, scene.y_min, scene.y_max)
 
-    for t, ax in zip(range(1, T, 2), axes):
+    for t, ax in zip(range(T), axes):
         plot_lcss_prediction_timestep(ax, map_data, ovehicles,
                 params, ctrl_result, t, ego_bbox)
-    plt.tight_layout()
-    plt.show()
+    fig.tight_layout()
+    fig.savefig('out/lcss_control.png')
