@@ -18,6 +18,7 @@ from collect.generate.scene import OnlineConfig
 
 """Test simulation of LCSSHighLevelAgent, the v1 midlevel controller
 
+pytest --collect-only
 pytest --log-cli-level=INFO --capture=tee-sys -vv
 """
 
@@ -70,7 +71,7 @@ SCENARIO_ego_lane_switch_1 = pytest.param(
 SCENARIO_ego_lane_switch_2 = pytest.param(
     # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
     360, [359, 358], 20, [CONTROL_ego_lane_switch], GOAL_ego_lane_switch,
-    id='ego_lane_switch_1'
+    id='ego_lane_switch_2'
 )
 
 def scenario(params, eval_env, eval_stg):
@@ -128,7 +129,7 @@ def scenario(params, eval_env, eval_stg):
             carla.Transform(
                 carla.Location(
                     x=state[0] + goal.x,
-                    y=state[1] + goal.y,
+                    y=state[1] - goal.y,
                     z=state[2] + 50
                 ),
                 carla.Rotation(pitch=-90)
@@ -154,6 +155,8 @@ def scenario(params, eval_env, eval_stg):
         for other_vehicle in other_vehicles:
             other_vehicle.destroy()
     
+    # CARLA has a bug. Tests fail when they are run too
+    # quickly after another.
     time.sleep(1)
 
 @pytest.mark.parametrize(

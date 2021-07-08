@@ -94,7 +94,7 @@ SCENARIO_ego_lane_switch_1 = pytest.param(
 SCENARIO_ego_lane_switch_2 = pytest.param(
     # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
     360, [359, 358], 20, [CONTROL_ego_lane_switch], GOAL_ego_lane_switch,
-    id='ego_lane_switch_1'
+    id='ego_lane_switch_2'
 )
 
 CONTROL_move_left = util.AttrDict(
