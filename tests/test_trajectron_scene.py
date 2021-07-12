@@ -14,11 +14,11 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from generate import get_all_vehicle_blueprints
-from generate import DataCollector
-from generate import NaiveMapQuerier, SceneConfig
-from generate import TrajectronPlusPlusSceneBuilder
-from generate.scene import TrajectronPlusPlusSceneBuilder
+from collect.generate import get_all_vehicle_blueprints
+from collect.generate import DataCollector
+from collect.generate import NaiveMapQuerier, SceneConfig
+from collect.generate.scene.v2_1.trajectron_scene import (
+        TrajectronPlusPlusSceneBuilder)
 
 TESTSceneBuilder=TrajectronPlusPlusSceneBuilder
 

@@ -1,3 +1,4 @@
+import os
 import logging
 
 import numpy as np
@@ -162,7 +163,7 @@ def plot_lcss_prediction_timestep(ax, map_data, ovehicles,
     ax.set_aspect('equal')
 
 def plot_lcss_prediction(pred_result, ovehicles,
-        params, ctrl_result, T, ego_bbox):
+        params, ctrl_result, T, ego_bbox, filename='lcss_control'):
     
     """Plots for paper"""
     fig, axes = plt.subplots(4, 2, figsize=(10, 20))
@@ -181,4 +182,4 @@ def plot_lcss_prediction(pred_result, ovehicles,
         plot_lcss_prediction_timestep(ax, map_data, ovehicles,
                 params, ctrl_result, t, ego_bbox)
     fig.tight_layout()
-    fig.savefig('out/lcss_control.png')
+    fig.savefig(os.path.join('out', f"{filename}.png"))

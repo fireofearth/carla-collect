@@ -240,7 +240,6 @@ class SceneBuilder(ABC):
             distances = np.linalg.norm(other_locations - player_location, axis=1)
             df = pd.DataFrame({
                     'frame_id': np.full((len(other_ids),), frame_id),
-                    # use env.NodeType.VEHICLE
                     'type': [self.__scene_config.node_type.VEHICLE] * len(other_ids),
                     'node_id': util.map_to_list(str, other_ids),
                     'robot': [False] * len(other_ids),
@@ -267,7 +266,6 @@ class SceneBuilder(ABC):
         ego_data = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle)
         data_point = pd.Series({
                 'frame_id': frame_id,
-                # use env.NodeType.VEHICLE
                 'type': self.__scene_config.node_type.VEHICLE,
                 'node_id': 'ego',
                 'robot': True,

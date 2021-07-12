@@ -70,7 +70,7 @@ class MidlevelAgent(AbstractDataCollector):
             map_reader,
             other_vehicle_ids,
             eval_stg,
-            predict_interval=6,
+            control_horizon=6,
             n_burn_interval=4,
             prediction_horizon=8,
             n_predictions=100,
@@ -86,7 +86,7 @@ class MidlevelAgent(AbstractDataCollector):
 
         self.__scene_builder = None
         self.__scene_config = scene_config
-        self.__predict_interval = predict_interval
+        self.__control_horizon = control_horizon
         self.__n_burn_interval = n_burn_interval
         self.__prediction_horizon = prediction_horizon
         self.__n_predictions = n_predictions
@@ -521,7 +521,7 @@ class MidlevelAgent(AbstractDataCollector):
             """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
                 pass
-            elif (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
+            elif (frame_id - self.__n_burn_interval) % self.__control_horizon == 0:
                 trajectory = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(trajectory, self.__scene_config.record_interval)
 

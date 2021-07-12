@@ -13,7 +13,10 @@ import utility as util
 
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
+
+from collect.in_simulation.midlevel.v2 import MidlevelAgent
+# from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
+
 from collect.generate.scene import OnlineConfig
 
 """Test the v2 midlevel controller
@@ -119,7 +122,7 @@ def scenario(params, eval_env, eval_stg):
     ego_vehicle = None
     agent = None
     other_vehicles = []
-    predict_interval = 8
+    control_interval = 8
     prediction_horizon = 8
     n_predictions = 100
     client, world, carla_map, traffic_manager = carla_synchronous
@@ -151,7 +154,7 @@ def scenario(params, eval_env, eval_stg):
                 other_vehicle_ids,
                 eval_stg,
                 n_burn_interval=n_burn_interval,
-                predict_interval=predict_interval,
+                control_interval=control_interval,
                 prediction_horizon=prediction_horizon,
                 n_predictions=n_predictions,
                 scene_config=online_config)
@@ -176,7 +179,7 @@ def scenario(params, eval_env, eval_stg):
         )
 
         n_burn_frames = n_burn_interval*online_config.record_interval
-        predict_frames = predict_interval*online_config.record_interval - 1
+        predict_frames = control_interval*online_config.record_interval - 1
         for idx in range(n_burn_frames + predict_frames):
             control = None
             for ctrl in controls:

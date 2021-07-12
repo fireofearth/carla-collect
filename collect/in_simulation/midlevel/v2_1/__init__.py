@@ -52,8 +52,8 @@ from ....generate.map import NaiveMapQuerier
 from ....generate.scene import OnlineConfig, SceneBuilder
 from ....generate.scene.v2_1.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
-from ....generate.scene.v2_1.trajectron_scene import (
-        standardization, print_and_reset_specs, plot_trajectron_scene)
+from ....generate.scene.trajectron_util import (
+        standardization, plot_trajectron_scene)
 
 class MidlevelAgent(AbstractDataCollector):
     """Controller for vehicle using predictions."""
@@ -124,10 +124,11 @@ class MidlevelAgent(AbstractDataCollector):
             map_reader,
             other_vehicle_ids,
             eval_stg,
-            predict_interval=6,
+            control_horizon=6,
             n_burn_interval=4,
             prediction_horizon=8,
             n_predictions=100,
+            scene_builder_cls=TrajectronPlusPlusSceneBuilder,
             scene_config=OnlineConfig()):
         
         self.__ego_vehicle = ego_vehicle
@@ -135,13 +136,20 @@ class MidlevelAgent(AbstractDataCollector):
         self.__world = self.__ego_vehicle.get_world()
 
         # __first_frame : int
-        #     First frame in simulation. Used to find current timestep.
+        #   First frame in simulation. Used to find current timestep.
         self.__first_frame = None
-
         self.__scene_builder = None
         self.__scene_config = scene_config
-        self.__predict_interval = predict_interval
+        self.__scene_builder_cls = scene_builder_cls
+        # __control_horizon : int
+        #   Number of predictions timesteps to conduct control over.
+        self.__control_horizon = control_horizon
+        # __n_burn_interval : int
+        #   Interval in prediction timesteps to skip prediction
+        #   and control.
         self.__n_burn_interval = n_burn_interval
+        # __prediction_horizon : int
+        #   Number of predictions timesteps to predict other vehicles over.
         self.__prediction_horizon = prediction_horizon
         self.__n_predictions = n_predictions
         self.__eval_stg = eval_stg
@@ -512,21 +520,22 @@ class MidlevelAgent(AbstractDataCollector):
                     carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = False
+        plot_scenario = True
         if plot_scenario:
             """Plot scenario"""
+            filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
             ctrl_result.headings = headings
             lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
             ego_bbox = [lon, lat]
             params.update(self.__params)
             plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
-                    self.__prediction_horizon, ego_bbox)
+                    self.__prediction_horizon, ego_bbox, filename=filename)
 
         return trajectory
 
     def do_first_step(self, frame):
         self.__first_frame = frame
-        self.__scene_builder = TrajectronPlusPlusSceneBuilder(
+        self.__scene_builder = self.__scene_builder_cls(
             self,
             self.__map_reader,
             self.__ego_vehicle,
@@ -554,7 +563,7 @@ class MidlevelAgent(AbstractDataCollector):
             """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
                 pass
-            elif (frame_id - self.__n_burn_interval) % self.__predict_interval == 0:
+            elif (frame_id - self.__n_burn_interval) % self.__control_horizon == 0:
                 trajectory = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(trajectory, self.__scene_config.record_interval)
 

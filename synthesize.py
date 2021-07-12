@@ -9,7 +9,7 @@
 """Generate CARLA batched data for Trajectron++
 
 To test, call
-python run.py -e1 -f200 -b10
+python synthesize.py -e1 -f200 -b10
 """
 
 import argparse
@@ -47,7 +47,9 @@ from collect.generate import (
 from collect.generate import SceneConfig
 from collect.generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
 from collect.generate.scene.v2_1.trajectron_scene import (
-        standardization, print_and_reset_specs, plot_trajectron_scene)
+        print_and_reset_specs)
+from collect.generate.scene.trajectron_util import (
+        standardization, plot_trajectron_scene)
 
 class DataGenerator(object):
 
