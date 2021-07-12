@@ -19,14 +19,6 @@ import utility as util
 import carlautil
 import carlautil.debug
 
-# try:
-#     # imports from carla/PythonAPI/carla
-#     from agents.tools.misc import is_within_distance_ahead, is_within_distance, compute_distance
-#     from agents.navigation.controller import VehiclePIDController
-#     from agents.tools.misc import distance_vehicle, draw_waypoints
-# except ModuleNotFoundError as e:
-#     raise Exception("You forgot to link carla/PythonAPI/carla")
-
 try:
     # imports from trajectron-plus-plus/trajectron
     from environment import Environment, Scene
@@ -67,9 +59,6 @@ class OnlineManager(object):
         self.delta = 0.1
         
         """Load dummy dataset."""
-        # dataset_path = 'carla_v2_1_dataset/carla_test_v2_1_full.pkl'
-        # with open(dataset_path, 'rb') as f:
-        #     eval_env = dill.load(f, encoding='latin1')
         eval_scene = Scene(timesteps=25, dt=0.5, name='test')
         eval_env = Environment(node_type_list=['VEHICLE'],
                 standardization=standardization)

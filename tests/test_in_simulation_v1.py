@@ -19,6 +19,7 @@ from collect.generate.scene import OnlineConfig
 """Test simulation of LCSSHighLevelAgent, the v1 midlevel controller
 
 pytest --collect-only
+(broken: starts another instance of CARLA?)
 pytest --log-cli-level=INFO --capture=tee-sys -vv
 """
 

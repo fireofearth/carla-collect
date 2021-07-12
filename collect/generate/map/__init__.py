@@ -8,9 +8,10 @@ import utility as util
 import carlautil
 import carlautil.debug
 
-from .label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
-from .label import SampleLabelMap, SampleLabelFilter
-from .label import SegmentationLabel
+from ..label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
+from ..label import SampleLabelMap, SampleLabelFilter
+from ..label import SegmentationLabel
+from .road import get_road_segment_enclosure
 
 class MapData(object):
     """Map data.
@@ -28,14 +29,19 @@ class MapData(object):
         self.road_polygons = road_polygons
         self.yellow_lines = yellow_lines
         self.white_lines = white_lines
-        
+
 
 class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
     used to query whether an actor is in a certain part
     (i.e. intersection, hill) of the map for the sake of
     labeling samples."""
-    PRECISION = 0.05
+
+    # used by __extract_polygons_and_lines()
+    EXTRACT_PRECISION = 0.05
+
+    # used by get_bounds_for_road_constraints()
+    BOUNDS_PRECISION = 1.0
 
     @staticmethod
     def __lateral_shift(transform, shift):
@@ -59,10 +65,10 @@ class MapQuerier(ABC):
         topology      = sorted(topology, key=lambda w: w.transform.location.z)
         for waypoint in topology:
             waypoints = [waypoint]
-            nxt = waypoint.next(self.PRECISION)[0]
+            nxt = waypoint.next(self.EXTRACT_PRECISION)[0]
             while nxt.road_id == waypoint.road_id:
                 waypoints.append(nxt)
-                nxt = nxt.next(self.PRECISION)[0]
+                nxt = nxt.next(self.EXTRACT_PRECISION)[0]
 
             left_marking  = carlautil.locations_to_ndarray(
                     [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints])
@@ -92,6 +98,11 @@ class MapQuerier(ABC):
         self._debug = debug
         self.map_data = self.__extract_polygons_and_lines()
 
+    def get_bounds_for_road_constraints(self, vehicle):
+        wp = self.carla_map.get_waypoint(vehicle.get_location())
+        wp.next(self.BOUNDS_PRECISION)
+        BOUNDS_PRECISIONl
+
     @property
     def map_name(self):
         return self.carla_map.name
@@ -120,6 +131,12 @@ class MapQuerier(ABC):
                 slope_type=slope_type,
                 bounding_type=self.at_bounding_box_to_label(actor),
                 slope_pitch=slope_pitch)
+    
+    def road_segment_enclosure_from_actor(self, actor, tol=2.0):
+        t = actor.get_transform()
+        wp = self.carla_map.get_waypoint(t.location)
+        return get_road_segment_enclosure(wp, tol=tol)
+
 
 class NaiveMapQuerier(MapQuerier):
     pass

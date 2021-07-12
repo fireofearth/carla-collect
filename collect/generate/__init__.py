@@ -1,5 +1,6 @@
-"""Functions and classes for data collection."""
+"""Functions and classes for generation of data."""
 
+# Built-in libraries
 import os
 import collections
 import abc
@@ -8,6 +9,7 @@ import enum
 import weakref
 import logging
 
+# PyPI libraries
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -15,19 +17,18 @@ import matplotlib
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
-import carla
 
+# Local libararies
+import carla
 import utility as util
 import carlautil
 import carlautil.debug
 
 from .map import MapQuerier, NaiveMapQuerier
 from .map import Map10HDBoundTIntersectionReader, IntersectionReader
-
 from .label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
 from .label import SampleLabelMap, SampleLabelFilter
 from .label import SegmentationLabel
-
 from .scene import SceneBuilder, SceneConfig
 from .scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
 
