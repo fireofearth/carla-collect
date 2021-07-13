@@ -18,9 +18,12 @@ from collect.generate.scene import OnlineConfig
 
 """Test simulation of LCSSHighLevelAgent, the v1 midlevel controller
 
-pytest --collect-only
+To collect test names call
 (broken: starts another instance of CARLA?)
-pytest --log-cli-level=INFO --capture=tee-sys -vv
+pytest --collect-only
+
+To run tests call
+pytest --log-cli-level=INFO --capture=tee-sys
 """
 
 SCENARIO_straight_road = pytest.param(

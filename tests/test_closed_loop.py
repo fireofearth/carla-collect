@@ -25,7 +25,9 @@ To collect test names call
 pytest --collect-only
 
 To run tests call
-pytest --log-cli-level=INFO --capture=tee-sys -vv
+pytest --log-cli-level=INFO --capture=tee-sys
+To run one test call e.gl
+pytest --log-cli-level=INFO --capture=tee-sys tests/test_closed_loop.py::test_Town03_scenario[ovehicle_turn-ph4_ch1_np100]
 """
 
 CONTROL_ovehicle_turn = util.AttrDict(
@@ -37,12 +39,22 @@ SCENARIO_ovehicle_turn = pytest.param(
     87, [164], 77, 15, [CONTROL_ovehicle_turn], None,
     id='ovehicle_turn'
 )
+SCENARIO_ovehicle_turn_short = pytest.param(
+    # ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal
+    87, [164], 77, 4, [CONTROL_ovehicle_turn], None,
+    id='ovehicle_turn_short'
+)
 
 """Prediction horizon 8, can result in in-feasibility for ovehicle_turn"""
 VARIABLES_ph8_ch8_np100 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
     8, 8, 100,
     id='ph8_ch8_np100'
+)
+VARIABLES_ph4_ch4_np5000 = pytest.param(
+    # prediction_horizon,control_horizon,n_predictions
+    4, 4, 5000,
+    id='ph4_ch4_np5000'
 )
 VARIABLES_ph4_ch1_np100 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
@@ -136,20 +148,23 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
     "prediction_horizon,control_horizon,n_predictions",
     [
         VARIABLES_ph8_ch8_np100,
+        VARIABLES_ph4_ch1_np100,
+        VARIABLES_ph4_ch4_np5000,
     ],
 )
 @pytest.mark.parametrize(
     "ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal",
     [
         SCENARIO_ovehicle_turn,
+        SCENARIO_ovehicle_turn_short,
     ],
 )
 def test_Town03_scenario(ego_spawn_idx, other_spawn_ids,
         n_burn_interval, run_interval, controls, goal,
         prediction_horizon, control_horizon, n_predictions,
-        carla_Town03_synchronous, eval_env, eval_stg):
+        carla_Town03_synchronous, eval_env, eval_stg_cuda):
     scenario_params = (ego_spawn_idx, other_spawn_ids,
             n_burn_interval, run_interval,
             controls, goal, carla_Town03_synchronous)
     variables = (prediction_horizon, control_horizon, n_predictions)
-    scenario(scenario_params, variables, eval_env, eval_stg)
+    scenario(scenario_params, variables, eval_env, eval_stg_cuda)

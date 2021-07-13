@@ -391,6 +391,7 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
             heading_v = np.divide(v, _v_norm, out=np.zeros_like(v), where=(_v_norm > 1.))
             heading_x = heading_v[:, 0]
             heading_y = heading_v[:, 1]
+            heading = node_df['heading'].values
 
             data_dict = {('position', 'x'): x,
                          ('position', 'y'): y,
@@ -532,4 +533,4 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
 
     def process_scene(self, data):
         scene, traj_data, max_timesteps, scene_config = self.__process_carla_scene(data)
-        return process_trajectron_scene(scene, traj_data, max_timesteps, scene_config)
+        return process_carla_scene(scene, traj_data, max_timesteps, scene_config)

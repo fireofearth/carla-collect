@@ -35,13 +35,24 @@ def eval_env():
 
 @pytest.fixture(scope="module")
 def eval_stg(eval_env):
-    """Load model."""
+    """Load model in CPU."""
     model_dir = 'experiments/nuScenes/models/20210622'
     model_name = 'models_19_Mar_2021_22_14_19_int_ee_me_ph8'
     model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
             model_dir, model_name)
     eval_stg, stg_hyp = load_model(
             model_path, eval_env, ts=20)
+    return eval_stg
+
+@pytest.fixture(scope="module")
+def eval_stg_cuda(eval_env):
+    """Load model in GPU."""
+    model_dir = 'experiments/nuScenes/models/20210622'
+    model_name = 'models_19_Mar_2021_22_14_19_int_ee_me_ph8'
+    model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
+            model_dir, model_name)
+    eval_stg, stg_hyp = load_model(
+            model_path, eval_env, ts=20, device='cuda')
     return eval_stg
 
 def instantiate_simulator(map_name):

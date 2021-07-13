@@ -166,7 +166,7 @@ def plot_lcss_prediction(pred_result, ovehicles,
         params, ctrl_result, T, ego_bbox, filename='lcss_control'):
     
     """Plots for paper"""
-    fig, axes = plt.subplots(4, 2, figsize=(10, 20))
+    fig, axes = plt.subplots(T // 2 + (T % 2), 2, figsize=(10, 20))
     axes = axes.ravel()
 
     """Get scene bitmap"""

@@ -5,9 +5,11 @@ This uses time varying vehicle dynamical control.
 The control code from LCSS is based off:
 https://arxiv.org/pdf/1801.03663.pdf
 
-v2_1 has road boundary conditions and closed loop
+v2_1 has road boundary conditions, closed loop.
+Code profiling is also done here.
 """
 
+# Built-in libraries
 import sys
 import os
 import math
@@ -16,6 +18,11 @@ import collections
 import weakref
 import copy
 
+# Profiling libraries
+import functools
+import cProfile, pstats, io
+
+# PyPI libraries
 import numpy as np
 import scipy.spatial
 import scipy.optimize
@@ -31,6 +38,7 @@ import docplex.mp
 import docplex.mp.model
 import carla
 
+# Local libraries
 import utility as util
 import carlautil
 import carlautil.debug
@@ -50,10 +58,55 @@ from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint
 from ....generate.map import NaiveMapQuerier
 from ....generate.scene import OnlineConfig, SceneBuilder
-from ....generate.scene.v2_1.trajectron_scene import (
+from ....generate.scene.v2_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 from ....generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene)
+
+
+def profile(sort_by='cumulative', lines_to_print=None, strip_dirs=False):
+    """A time profiler decorator.
+    Inspired by and modified the profile decorator of Giampaolo Rodola:
+    http://code.activestate.com/recipes/577817-profile-decorator/
+    Args:
+        output_file: str or None. Default is None
+            Path of the output file. If only name of the file is given, it's
+            saved in the current directory.
+            If it's None, the name of the decorated function is used.
+        sort_by: str or SortKey enum or tuple/list of str/SortKey enum
+            Sorting criteria for the Stats object.
+            For a list of valid string and SortKey refer to:
+            https://docs.python.org/3/library/profile.html#pstats.Stats.sort_stats
+        lines_to_print: int or None
+            Number of lines to print. Default (None) is for all the lines.
+            This is useful in reducing the size of the printout, especially
+            that sorting by 'cumulative', the time consuming operations
+            are printed toward the top of the file.
+        strip_dirs: bool
+            Whether to remove the leading path info from file names.
+            This is also useful in reducing the size of the printout
+    Returns:
+        Profile of the decorated function
+    """
+    def inner(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            pr = cProfile.Profile()
+            pr.enable()
+            retval = func(*args, **kwargs)
+            pr.disable()
+            s = io.StringIO()
+            ps = pstats.Stats(pr, stream=s)
+            if strip_dirs:
+                ps.strip_dirs()
+            ps.sort_stats(sort_by)
+            ps.print_stats(lines_to_print)
+            logging.info(f"code profile of {func.__name__}")
+            logging.info(s.getvalue())
+            return retval
+        return wrapper
+    return inner
+
 
 class MidlevelAgent(AbstractDataCollector):
     """Controller for vehicle using predictions."""
@@ -219,6 +272,12 @@ class MidlevelAgent(AbstractDataCollector):
         self.__sensor = None
 
     def do_prediction(self, frame):
+        """
+        Get processed scene object from scene builder, input the scene to a model to
+        generate the predictions, and then return the predictions and the latents variables.
+
+        TODO: SceneBuilder.get_scene() takes 8 seconds to complete!
+        """
 
         """Construct online scene"""
         scene = self.__scene_builder.get_scene()
@@ -495,6 +554,7 @@ class MidlevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
+    @profile(sort_by='cumulative', lines_to_print=30, strip_dirs=False)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
@@ -520,7 +580,7 @@ class MidlevelAgent(AbstractDataCollector):
                     carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = True
+        plot_scenario = False
         if plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
@@ -560,8 +620,8 @@ class MidlevelAgent(AbstractDataCollector):
         self.__scene_builder.capture_trajectory(frame)
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
-            """Initially collect data without doing anything to the vehicle."""
             if frame_id < self.__n_burn_interval:
+                """Initially collect data without doing any control to the vehicle."""
                 pass
             elif (frame_id - self.__n_burn_interval) % self.__control_horizon == 0:
                 trajectory = self.__compute_prediction_controls(frame)

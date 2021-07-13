@@ -14,8 +14,8 @@ import utility as util
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
 
-from collect.in_simulation.midlevel.v2 import MidlevelAgent
-# from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
+# from collect.in_simulation.midlevel.v2 import MidlevelAgent
+from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
 
 from collect.generate.scene import OnlineConfig
 
@@ -26,7 +26,9 @@ To collect test names call
 pytest --collect-only
 
 To run tests call
-pytest --log-cli-level=INFO --capture=tee-sys -vv
+pytest --log-cli-level=INFO --capture=tee-sys
+To run one test call e.gl
+pytest --log-cli-level=INFO --capture=tee-sys tests/test_in_simulation_v2.py.py::test_Town03_scenario[ovehicle_turn]
 """
 
 SCENARIO_straight_road = pytest.param(
@@ -122,7 +124,7 @@ def scenario(params, eval_env, eval_stg):
     ego_vehicle = None
     agent = None
     other_vehicles = []
-    control_interval = 8
+    control_horizon = 8
     prediction_horizon = 8
     n_predictions = 100
     client, world, carla_map, traffic_manager = carla_synchronous
@@ -154,7 +156,7 @@ def scenario(params, eval_env, eval_stg):
                 other_vehicle_ids,
                 eval_stg,
                 n_burn_interval=n_burn_interval,
-                control_interval=control_interval,
+                control_horizon=control_horizon,
                 prediction_horizon=prediction_horizon,
                 n_predictions=n_predictions,
                 scene_config=online_config)
@@ -179,7 +181,7 @@ def scenario(params, eval_env, eval_stg):
         )
 
         n_burn_frames = n_burn_interval*online_config.record_interval
-        predict_frames = control_interval*online_config.record_interval - 1
+        predict_frames = control_horizon*online_config.record_interval - 1
         for idx in range(n_burn_frames + predict_frames):
             control = None
             for ctrl in controls:
