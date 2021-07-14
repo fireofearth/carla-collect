@@ -306,7 +306,53 @@ class SceneBuilder(ABC):
         return np.pad(points, [(0, 0), (0, 1)],
                 mode='constant', constant_values=1.)
 
-    def __process_lidar_snapshot(self, lidar_measurement):
+    def __process_lidar_snapshots(self, frames):
+        """Add semantic LIDAR points from measurements to collection of points
+        with __sensor_transform_at_t0 as the origin.
+
+        Parameters
+        ==========
+        frames : list of int
+            The frames to merge LIDAR measurements to collection
+            sorted by ascending order.
+        """
+        if not frames:
+            return
+        collection_of_points = []
+        collection_of_labels = []
+        collection_of_object_ids = []
+        for frame in frames:
+            lidar_measurement = self.__lidar_feeds[frame]
+            raw_data = lidar_measurement.raw_data
+            mtx = np.array(lidar_measurement.transform.get_matrix())
+            data = np.frombuffer(raw_data, dtype=np.dtype([
+                    ('x', np.float32), ('y', np.float32), ('z', np.float32),
+                    ('CosAngle', np.float32), ('ObjIdx', np.uint32),
+                    ('ObjTag', np.uint32)]))
+            points = np.array([data['x'], data['y'], data['z']]).T
+            labels = data['ObjTag']
+            object_ids = data['ObjIdx']
+            self.__lidar_snapshot_to_populate_vehicle_visibility(lidar_measurement,
+                    points, labels, object_ids)
+            points = self.__add_1_to_points(points)
+            points = points @ mtx.T
+            points = points[:, :3]
+            collection_of_points.append(points)
+            collection_of_labels.append(labels)
+            collection_of_object_ids.append(object_ids)
+        if self.__sensor_loc_at_t0 is None:
+            lidar_measurement = self.__lidar_feeds[frames[0]]
+            loc = carlautil.transform_to_location_ndarray(lidar_measurement.transform)
+            self.__sensor_loc_at_t0 = loc
+        else:
+            collection_of_points     = [self.__overhead_points] + collection_of_points
+            collection_of_labels     = [self.__overhead_labels] + collection_of_labels
+            collection_of_object_ids = [self.__overhead_ids]    + collection_of_object_ids
+        self.__overhead_points = np.concatenate(collection_of_points)
+        self.__overhead_labels = np.concatenate(collection_of_labels)
+        self.__overhead_ids    = np.concatenate(collection_of_object_ids)
+
+    def __old_process_lidar_snapshot(self, lidar_measurement):
         """Add semantic LIDAR points from measurement to a collection of points
         with __sensor_transform_at_t0 as the origin.
 
@@ -396,10 +442,8 @@ class SceneBuilder(ABC):
             self.__seen_lidar_keys.update(frames)
         else:
             frames = range(self.__first_frame, self.__last_frame + 1)
-        for frame in frames:
-            lidar_measurement = self.__lidar_feeds[frame]
-            self.__process_lidar_snapshot(lidar_measurement)
-
+        frames = sorted(frames)
+        self.__process_lidar_snapshots(frames)
         return self.__build_scene_data()
 
     def __remove_scene_builder(self):

@@ -50,7 +50,7 @@ except ModuleNotFoundError as e:
 
 from ..util import (get_vertices_from_center, obj_matmul,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
-        plot_lcss_prediction)
+        plot_lcss_prediction, get_vertices_from_centers)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...lowlevel import LocalPlanner
@@ -275,8 +275,6 @@ class MidlevelAgent(AbstractDataCollector):
         """
         Get processed scene object from scene builder, input the scene to a model to
         generate the predictions, and then return the predictions and the latents variables.
-
-        TODO: SceneBuilder.get_scene() takes 8 seconds to complete!
         """
 
         """Construct online scene"""
@@ -454,27 +452,28 @@ class MidlevelAgent(AbstractDataCollector):
         constraints.extend([ z <= c3 for z in -c1 - c2 ])
         return constraints
 
-    def do_highlevel_control(self, params, ovehicles):
-        """Decide parameters"""
-        # TODO: assign eps^k_o and beta^k_o to the vehicles.
-        # Skipping that for now.
-    
-        """Compute the approximation of the union of obstacle sets"""
-        # Find vertices of sampled obstacle sets
+    def __compute_vertices(self, params, ovehicles):
+        """Compute verticles from predictions."""
         T, K, n_ov = self.__params.T, params.K, params.O
         vertices = np.empty((T, np.max(K), n_ov), dtype=object).tolist()
         for ov_idx, ovehicle in enumerate(ovehicles):
             for latent_idx in range(ovehicle.n_states):
                 for t in range(T):
-                    ps = ovehicle.pred_positions[latent_idx]
-                    yaws = ovehicle.pred_yaws[latent_idx]
-                    n_p = ps.shape[0]
-                    vertices[t][latent_idx][ov_idx] = np.zeros((n_p, 8))
-                    for k in range(n_p):
-                        vertices[t][latent_idx][ov_idx][k] = get_vertices_from_center(
-                                ps[k,t], yaws[k,t], ovehicle.bbox)
-
-        """Cluster the samples"""
+                    # ps = ovehicle.pred_positions[latent_idx]
+                    # yaws = ovehicle.pred_yaws[latent_idx]
+                    # n_p = ps.shape[0]
+                    # vertices[t][latent_idx][ov_idx] = np.zeros((n_p, 8))
+                    # for k in range(n_p):
+                    #     vertices[t][latent_idx][ov_idx][k] = get_vertices_from_center(
+                    #             ps[k,t], yaws[k,t], ovehicle.bbox)
+                    ps = ovehicle.pred_positions[latent_idx][:,t]
+                    yaws = ovehicle.pred_yaws[latent_idx][:,t]
+                    vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
+                            ps, yaws, ovehicle.bbox) 
+        return vertices
+    
+    def __compute_overapproximations(self, vertices, params, ovehicles):
+        """Compute the approximation of the union of obstacle sets"""
         T, K, n_ov = self.__params.T, params.K, params.O
         A_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
         b_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
@@ -485,9 +484,17 @@ class MidlevelAgent(AbstractDataCollector):
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
                     A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
-
                     A_union[t][latent_idx][ov_idx] = A_union_k
                     b_union[t][latent_idx][ov_idx] = b_union_k
+        return A_union, b_union
+
+    def do_highlevel_control(self, params, ovehicles):
+        """Decide parameters"""
+        # TODO: assign eps^k_o and beta^k_o to the vehicles.
+        # Skipping that for now.
+    
+        vertices = self.__compute_vertices(params, ovehicles)
+        A_union, b_union = self.__compute_overapproximations(vertices, params, ovehicles)
         
         """Apply motion planning problem"""
         model = docplex.mp.model.Model(name="proposed_problem")
@@ -554,7 +561,7 @@ class MidlevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
-    @profile(sort_by='cumulative', lines_to_print=30, strip_dirs=False)
+    @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
