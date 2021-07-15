@@ -554,7 +554,7 @@ class MidlevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
-    @profile(sort_by='cumulative', lines_to_print=30, strip_dirs=False)
+    # @profile(sort_by='cumulative', lines_to_print=30, strip_dirs=False)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)

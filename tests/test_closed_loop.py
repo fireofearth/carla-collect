@@ -51,10 +51,10 @@ VARIABLES_ph8_ch8_np100 = pytest.param(
     8, 8, 100,
     id='ph8_ch8_np100'
 )
-VARIABLES_ph4_ch4_np5000 = pytest.param(
+VARIABLES_ph4_ch1_np5000 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
-    4, 4, 5000,
-    id='ph4_ch4_np5000'
+    4, 1, 5000,
+    id='ph4_ch1_np5000'
 )
 VARIABLES_ph4_ch1_np100 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
@@ -149,7 +149,7 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
     [
         VARIABLES_ph8_ch8_np100,
         VARIABLES_ph4_ch1_np100,
-        VARIABLES_ph4_ch4_np5000,
+        VARIABLES_ph4_ch1_np5000,
     ],
 )
 @pytest.mark.parametrize(
