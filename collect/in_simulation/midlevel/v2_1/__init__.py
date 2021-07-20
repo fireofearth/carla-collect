@@ -561,7 +561,7 @@ class MidlevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
-    @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
+    # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
@@ -587,7 +587,7 @@ class MidlevelAgent(AbstractDataCollector):
                     carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = False
+        plot_scenario = True
         if plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
@@ -639,7 +639,7 @@ class MidlevelAgent(AbstractDataCollector):
         self.__ego_vehicle.apply_control(control)
 
     def remove_scene_builder(self, first_frame):
-        raise Exception(f"Can't remove scene builder from {util.classname(x)}.")
+        raise Exception(f"Can't remove scene builder from {util.classname(first_frame)}.")
 
     @staticmethod
     def parse_image(weak_self, image):

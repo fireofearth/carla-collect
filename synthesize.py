@@ -9,6 +9,7 @@
 """Generate CARLA batched data for Trajectron++
 
 To test, call
+
 python synthesize.py -e1 -f200 -b10
 """
 
@@ -45,8 +46,8 @@ from collect.generate import (
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
 from collect.generate import SceneConfig
-from collect.generate.scene.v2_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
-from collect.generate.scene.v2_1.trajectron_scene import (
+from collect.generate.scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from collect.generate.scene.v3.trajectron_scene import (
         print_and_reset_specs)
 from collect.generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene)
@@ -298,7 +299,7 @@ def main():
     """Main method"""
     
     argparser = argparse.ArgumentParser(
-        description='CARLA Automatic Control Client')
+        description=__doc__)
     argparser.add_argument(
         '-v', '--verbose',
         action='store_true',
