@@ -530,7 +530,7 @@ class MidlevelAgent(AbstractDataCollector):
         self.__ego_vehicle.apply_control(control)
 
     def remove_scene_builder(self, first_frame):
-        raise Exception(f"Can't remove scene builder from {util.classname(x)}.")
+        raise Exception(f"Can't remove scene builder from {util.classname(first_frame)}.")
 
     @staticmethod
     def parse_image(weak_self, image):

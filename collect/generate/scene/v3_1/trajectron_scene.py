@@ -1,21 +1,27 @@
 """Based on trajectron-plus-plus/experiments/nuScenes/process_data.py
 """
 
+# Built-in packages
 import sys
 import os
 import logging
+import argparse
+
+# PyPI packages
+import dill
 import numpy as np
+import pandas as pd
 import scipy
 import cv2 as cv
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
-import pandas as pd
-import dill
-import argparse
-from tqdm import tqdm
-from pyquaternion import Quaternion
 from sklearn.model_selection import train_test_split
+from pyquaternion import Quaternion
+from tqdm import tqdm
+
+# Local packages
+import utility as util
 
 try:
     # trajectron-plus-plus/trajectron
@@ -342,15 +348,20 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
         node_df = data[data['node_id'] == node_id].copy()
         if node_df['x'].shape[0] < 2:
             continue
-        
+
         if not np.all(np.diff(node_df['frame_id']) == 1):
+            """When there is occlusion, then take the longest
+            subsequence of consecutive vehicle observations."""
+            logging.info("Occlusion")
             global occlusion
             occlusion += 1
-            logging.info("Occlusion")
             occl_count = np.diff(node_df['frame_id'])
             logging.info(occl_count)
             # plot_occlusion(scene, data, node_df, occl_count)
-            continue  # TODO Make better
+            s, sz = util.longest_consecutive_increasing_subsequence(node_df['frame_id'])
+            if sz < 2:
+                continue
+            node_df = node_df[s]
 
         if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE and not node_id == 'ego':
             x, y = node_df['x'].values, node_df['y'].values
@@ -475,12 +486,12 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
             rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
             cv.polylines(bitmap, [rzline], False, (0,255,0), thickness=2)
-        bitmap = bitmap.astype(np.uint8).transpose((2, 1, 0))
 
         for line in white_lines:
             rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
             cv.polylines(bitmap, [rzline], False, (0,0,255), thickness=2)
+        bitmap = bitmap.astype(np.uint8).transpose((2, 1, 0))
 
         # Create scene
         dt = data.fixed_delta_seconds * data.scene_config.record_interval
@@ -492,7 +503,6 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         scene.y_min = y_min
         scene.x_max = x_max
         scene.y_max = y_max
-        scene.map_name = data.map_name
         scene.x_size = x_size
         scene.y_size = y_size
 

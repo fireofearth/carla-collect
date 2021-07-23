@@ -3,6 +3,7 @@ import os
 import pytest
 import numpy as np
 
+import utility as util
 import carla
 
 try:
@@ -20,6 +21,17 @@ CARLA_MAP = 'Town03'
 DELTA = 0.1
 SEED = 1
 
+# os.environ['TRAJECTRONPP_DIR']
+model_spec_1 = util.AttrDict(
+        path='experiments/nuScenes/models/20210622/models_19_Mar_2021_22_14_19_int_ee_me_ph8',
+        desc="Base +Dynamics, Map off-the-shelf model trained on NuScenes")
+
+model_spec_2 = util.AttrDict(
+        path='experiments/nuScenes/models/models_20_Jul_2021_11_48_11_carla_v3_0_1_base_distmap_ph8',
+        desc="Base +Map model w/ heading fix trained on small CARLA synthesized")
+
+model_spec = model_spec_2
+
 @pytest.fixture(scope="module")
 def eval_env():
     """Load dummy dataset."""
@@ -36,10 +48,8 @@ def eval_env():
 @pytest.fixture(scope="module")
 def eval_stg(eval_env):
     """Load model in CPU."""
-    model_dir = 'experiments/nuScenes/models/20210622'
-    model_name = 'models_19_Mar_2021_22_14_19_int_ee_me_ph8'
     model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
-            model_dir, model_name)
+            model_spec.path)
     eval_stg, stg_hyp = load_model(
             model_path, eval_env, ts=20)
     return eval_stg
@@ -47,10 +57,8 @@ def eval_stg(eval_env):
 @pytest.fixture(scope="module")
 def eval_stg_cuda(eval_env):
     """Load model in GPU."""
-    model_dir = 'experiments/nuScenes/models/20210622'
-    model_name = 'models_19_Mar_2021_22_14_19_int_ee_me_ph8'
     model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
-            model_dir, model_name)
+            model_spec.path)
     eval_stg, stg_hyp = load_model(
             model_path, eval_env, ts=20, device='cuda')
     return eval_stg

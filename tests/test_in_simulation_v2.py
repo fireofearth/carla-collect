@@ -126,7 +126,7 @@ def scenario(params, eval_env, eval_stg):
     other_vehicles = []
     control_horizon = 8
     prediction_horizon = 8
-    n_predictions = 5000
+    n_predictions = 100
     client, world, carla_map, traffic_manager = carla_synchronous
 
     try:

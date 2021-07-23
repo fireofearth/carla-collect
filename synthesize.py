@@ -10,7 +10,7 @@
 
 To test, call
 
-python synthesize.py -e1 -f200 -b10
+python synthesize.py -e1 -f400
 """
 
 import argparse
@@ -34,23 +34,16 @@ SetAutopilot = carla.command.SetAutopilot
 SetVehicleLightState = carla.command.SetVehicleLightState
 FutureActor = carla.command.FutureActor
 
-try:
-    # trajectron-plus-plus/trajectron
-    from environment import Environment, Scene, Node
-    from environment import GeometricMap, derivative_of
-except ModuleNotFoundError as e:
-    raise Exception("You forgot to link trajectron-plus-plus/trajectron")
-
 from collect.generate import (
         get_all_vehicle_blueprints,
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
 from collect.generate import SceneConfig
-from collect.generate.scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
-from collect.generate.scene.v3.trajectron_scene import (
+from collect.generate.scene.v3_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from collect.generate.scene.v3_1.trajectron_scene import (
         print_and_reset_specs)
 from collect.generate.scene.trajectron_util import (
-        standardization, plot_trajectron_scene)
+        standardization, plot_trajectron_scene, make_environment)
 
 class DataGenerator(object):
 
@@ -81,15 +74,10 @@ class DataGenerator(object):
             self.world = self.client.load_world(self.args.map)
         self.carla_map = self.world.get_map()
         self.traffic_manager = self.client.get_trafficmanager(8000)
-        self.intersection_reader = IntersectionReader(
+        self.map_reader = IntersectionReader(
                 self.world, self.carla_map, debug=self.args.debug)
         
-        self.env = Environment(node_type_list=['VEHICLE'],
-                standardization=standardization)
-        attention_radius = dict()
-        attention_radius[(self.env.NodeType.VEHICLE, self.env.NodeType.VEHICLE)] = 30.0
-        self.env.attention_radius = attention_radius
-        self.env.robot_type = self.env.NodeType.VEHICLE
+        self.env = make_environment(self.map_reader.map_name)
         self.scenes = []
 
         self.scene_config = SceneConfig(
@@ -171,12 +159,11 @@ class DataGenerator(object):
         vehicles = dict(zip(vehicle_ids, vehicles))
         vehicles_ids_to_data_collect = vehicle_ids[:self.args.n_data_collectors]
 
-        
         for idx, vehicle_id in enumerate(vehicles_ids_to_data_collect):
             vehicle_ids_to_watch = vehicle_ids[:idx] + vehicle_ids[idx + 1:]
             vehicle = self.world.get_actor(vehicle_id)
             data_collector = DataCollector(vehicle,
-                    self.intersection_reader,
+                    self.map_reader,
                     vehicle_ids_to_watch,
                     scene_builder_cls=TrajectronPlusPlusSceneBuilder,
                     scene_config=self.scene_config,
@@ -245,7 +232,7 @@ class DataGenerator(object):
                 self.traffic_manager.set_hybrid_physics_mode(True)
             self.world.apply_settings(settings)
             if self.args.debug:
-                self.intersection_reader.debug_display()
+                self.map_reader.debug_display()
 
             for episode in range(self.args.start_at_episode,
                     self.args.start_at_episode + self.n_episodes):
@@ -352,7 +339,7 @@ def main():
     argparser.add_argument(
         '-f', '--n-frames',
         metavar='F',
-        default=500,
+        default=560,
         type=int,
         help='Number of frames in each episode to capture (default: 500)')
     argparser.add_argument(
@@ -364,7 +351,7 @@ def main():
     argparser.add_argument(
         '-n', '--n-vehicles',
         metavar='N',
-        default=80,
+        default=120,
         type=int,
         help='number of vehicles (default: 80)')
     argparser.add_argument(
@@ -376,12 +363,12 @@ def main():
     argparser.add_argument(
         '--save-frequency',
         metavar='S',
-        default=26,
+        default=33,
         type=int)
     argparser.add_argument(
         '--scene-length',
         metavar='L',
-        default=25,
+        default=32,
         type=int)
     argparser.add_argument(
         '--hybrid',
