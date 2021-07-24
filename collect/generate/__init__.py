@@ -128,7 +128,7 @@ class DataCollector(AbstractDataCollector):
         # __make_scene_name : function
         #     Scene names (scene ID) are created using util.IDMaker
         self.__make_scene_name = lambda frame: carla_id_maker.make_id(
-                map_name=self.__map_reader.map_name, episode=self.episode,
+                map=self.__map_reader.map_name, episode=self.episode,
                 agent=self.__ego_vehicle.id, frame=frame)
 
         self.__world = self.__ego_vehicle.get_world()

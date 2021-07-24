@@ -40,8 +40,7 @@ from collect.generate import (
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
 from collect.generate import SceneConfig
 from collect.generate.scene.v3_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
-from collect.generate.scene.v3_1.trajectron_scene import (
-        print_and_reset_specs)
+from collect.generate.scene.v3_1.trajectron_scene import print_and_reset_specs
 from collect.generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene, make_environment)
 

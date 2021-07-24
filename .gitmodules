@@ -1,0 +1,6 @@
+[submodule "Trajectron-plus-plus"]
+	path = Trajectron-plus-plus
+	url = https://github.com/fireofearth/Trajectron-plus-plus.git
+[submodule "python-utility"]
+	path = python-utility
+	url = https://github.com/fireofearth/python-utility.git

@@ -93,7 +93,7 @@ class SampleGroupCreator(object):
         for map_name in labels['map']:
             for episode_id in labels['episode']:
                 for agent_id in labels['agent']:
-                    print(f"{map_name}/{episode_id}/{agent_id} to group {group_idx}")
+                    # print(f"{map_name}/{episode_id}/{agent_id} to group {group_idx}")
                     groups[group_idx].extend(nested_groups[map_name][episode_id][agent_id])
                     group_idx = (group_idx + 1) % self.n_groups
         
