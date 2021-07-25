@@ -14,7 +14,7 @@ CARLA_MAP = 'Town03'
 with open('out/test_server.txt', 'w') as log:
     binpath = os.path.join(os.environ['CARLA_DIR'], 'CarlaUE4.sh')
     # "DISPLAY= ./CarlaUE4.sh -opengl"
-    settings = f"-quality-level=Low -carla-rpc-port={CARLA_PORT}"
+    settings = f"-opengl -quality-level=Low -carla-rpc-port={CARLA_PORT}"
     cmd = ' '.join([binpath, settings]).split()
     print("Calling", *cmd)
     proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=log)
