@@ -425,6 +425,7 @@ class SceneBuilder(ABC):
         ==========
         scene_data : SceneBuilderData
             The data in process the scene with.
+            scene_data.trajectory_data is sorted by frame_id column.
         
         Returns
         =======

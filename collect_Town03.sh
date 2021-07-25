@@ -20,8 +20,3 @@ python synthesize.py --start-at-episode 15
 sleep 3
 
 python synthesize.py --start-at-episode 20
-
-sleep 3
-
-python synthesize.py --start-at-episode 25
-

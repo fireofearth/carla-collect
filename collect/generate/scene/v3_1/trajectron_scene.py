@@ -352,16 +352,18 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
         if not np.all(np.diff(node_df['frame_id']) == 1):
             """When there is occlusion, then take the longest
             subsequence of consecutive vehicle observations."""
-            logging.info("Occlusion")
             global occlusion
             occlusion += 1
-            occl_count = np.diff(node_df['frame_id'])
-            logging.info(occl_count)
             # plot_occlusion(scene, data, node_df, occl_count)
             s, sz = util.longest_consecutive_increasing_subsequence(node_df['frame_id'])
+            logging.info(f"Found an occlusion by node {node_id} in scene {scene.name}.")
+            logging.info(f"frame_id is {node_df['frame_id'].values}")
+            occl_count = np.diff(node_df['frame_id'])
+            logging.info(f"np.diff() on frame_id is {occl_count}; longest sequence is {sz}")
             if sz < 2:
                 continue
-            node_df = node_df[s]
+            node_df = node_df[s].copy()
+            node_df['frame_id'] = np.arange(sz)
 
         if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE and not node_id == 'ego':
             x, y = node_df['x'].values, node_df['y'].values
