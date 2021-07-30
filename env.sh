@@ -2,7 +2,7 @@
 
 export APPROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-# Must set this manually
+# Must set these paths manually
 CARLANAME=carla-0.9.9
 CARLANAME=carla-0.9.11
 export CARLA_DIR=/home/$(whoami)/src/$CARLANAME

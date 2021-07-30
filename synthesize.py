@@ -10,7 +10,7 @@
 
 To test, call
 
-python synthesize.py -e1 -f400
+python synthesize.py -e1 -f560
 """
 
 import argparse

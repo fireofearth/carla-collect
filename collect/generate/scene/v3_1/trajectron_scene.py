@@ -355,14 +355,15 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
             global occlusion
             occlusion += 1
             # plot_occlusion(scene, data, node_df, occl_count)
-            s, sz = util.longest_consecutive_increasing_subsequence(node_df['frame_id'])
+            s, sz = util.longest_consecutive_increasing_subsequence(node_df['frame_id'].values)
             logging.info(f"Found an occlusion by node {node_id} in scene {scene.name}.")
-            logging.info(f"frame_id is {node_df['frame_id'].values}")
+            logging.info(f"List of frame_id is {node_df['frame_id'].values}")
             occl_count = np.diff(node_df['frame_id'])
             logging.info(f"np.diff() on frame_id is {occl_count}; longest sequence is {sz}")
             if sz < 2:
                 continue
             node_df = node_df[s].copy()
+            logging.info(f"Sequence of frame_id is {node_df['frame_id'].values}")
             node_df['frame_id'] = np.arange(sz)
 
         if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE and not node_id == 'ego':
