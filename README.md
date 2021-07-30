@@ -50,7 +50,7 @@ Anytime you need to run something in `carla-collect`, please do `source carla-co
 Cloud Link: <https://drive.google.com/drive/folders/1p8tpx6WEAlTM-yEGoK3fqsCzOasXafHN?usp=sharing>
 
 **Step 6**. Create a directory `carla-collect/Trajectron-plus-plus/experiments/processed`. Download the `.pkl` files for the preprocessed NuScenes dataset from the Cloud to there.  
-Cloud Link:
+Cloud Link: <https://drive.google.com/drive/folders/1mKp1MLgGMdNaOXLOoD81jgunbbqdDwlU?usp=sharing>
 
 **Step 7**. Create a directory `carla-collect/Trajectron-plus-plus/experiments/nuScenes/models`. Download the `models_*` directories from the Cloud to there.  
 Cloud Link: <https://drive.google.com/drive/folders/1EvJXD42KHwXn1lvktILKvv3W4WM4Pxd_?usp=sharing>
