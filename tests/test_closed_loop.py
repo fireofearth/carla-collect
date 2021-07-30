@@ -45,11 +45,30 @@ SCENARIO_ovehicle_turn_short = pytest.param(
     id='ovehicle_turn_short'
 )
 
-"""Prediction horizon 8, can result in in-feasibility for ovehicle_turn"""
+CONTROL_merge_lane = util.AttrDict(
+    interval=(26*5, 35*5,),
+    control=carla.VehicleControl(throttle=0.6)
+)
+SCENARIO_merge_lane = pytest.param(
+    # ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal
+    279, [257], 36, 15, [CONTROL_merge_lane], None,
+    id='merge_lane'
+)
+SCENARIO_merge_lane_short = pytest.param(
+    # ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal
+    279, [257], 36, 8, [CONTROL_merge_lane], None,
+    id='merge_lane_short'
+)
+
 VARIABLES_ph8_ch8_np100 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
     8, 8, 100,
     id='ph8_ch8_np100'
+)
+VARIABLES_ph8_ch8_np5000 = pytest.param(
+    # prediction_horizon,control_horizon,n_predictions
+    8, 8, 100,
+    id='ph8_ch8_np5000'
 )
 VARIABLES_ph4_ch1_np5000 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
@@ -166,5 +185,31 @@ def test_Town03_scenario(ego_spawn_idx, other_spawn_ids,
     scenario_params = (ego_spawn_idx, other_spawn_ids,
             n_burn_interval, run_interval,
             controls, goal, carla_Town03_synchronous)
+    variables = (prediction_horizon, control_horizon, n_predictions)
+    scenario(scenario_params, variables, eval_env, eval_stg_cuda)
+
+@pytest.mark.parametrize(
+    "prediction_horizon,control_horizon,n_predictions",
+    [
+        VARIABLES_ph8_ch8_np100,
+        VARIABLES_ph8_ch8_np5000,
+        VARIABLES_ph4_ch1_np100,
+        VARIABLES_ph4_ch1_np5000,
+    ],
+)
+@pytest.mark.parametrize(
+    "ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal",
+    [
+        SCENARIO_merge_lane,
+        SCENARIO_merge_lane_short,
+    ],
+)
+def test_Town06_scenario(ego_spawn_idx, other_spawn_ids,
+        n_burn_interval, run_interval, controls, goal,
+        prediction_horizon, control_horizon, n_predictions,
+        carla_Town06_synchronous, eval_env, eval_stg_cuda):
+    scenario_params = (ego_spawn_idx, other_spawn_ids,
+            n_burn_interval, run_interval,
+            controls, goal, carla_Town06_synchronous)
     variables = (prediction_horizon, control_horizon, n_predictions)
     scenario(scenario_params, variables, eval_env, eval_stg_cuda)

@@ -1,4 +1,3 @@
-conda activate trajectron-cplex
 source env.sh
 jupyter notebook \
 	--NotebookApp.iopub_data_rate_limit=1.0e10 \

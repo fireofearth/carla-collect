@@ -1,5 +1,7 @@
 import enum
 
+import utility as util
+
 class ScenarioIntersectionLabel(object):
     """Labels samples by proximity of vehicle to intersections."""
 
@@ -85,3 +87,16 @@ class SegmentationLabel(enum.Enum):
     Road = 7
     SideWalk = 8
     Vehicle = 10
+
+carla_id_maker = util.IDMaker(
+        'map/episode/agent/frame',
+        prefixes={
+            'episode':  'ep',
+            'agent':    'agent',
+            'frame':    'frame'},
+        format_spec={
+            'episode':  '03d',
+            'agent':    '03d',
+            'frame':    '08d'})
+
+

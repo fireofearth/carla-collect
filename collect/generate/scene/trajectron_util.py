@@ -150,3 +150,13 @@ def plot_trajectron_scene(savedir, scene):
     fn = f"{ scene.name.replace('/', '_') }.png"
     fp = os.path.join(savedir, fn)
     fig.savefig(fp)
+
+def make_environment(name):
+    env = Environment(node_type_list=['VEHICLE'],
+                name=name,
+                standardization=standardization)
+    attention_radius = dict()
+    attention_radius[(env.NodeType.VEHICLE, env.NodeType.VEHICLE)] = 30.0
+    env.attention_radius = attention_radius
+    env.robot_type = env.NodeType.VEHICLE
+    return env

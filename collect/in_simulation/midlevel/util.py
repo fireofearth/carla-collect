@@ -21,6 +21,8 @@ import carlautil
 import carlautil.debug
 
 def get_vertices_from_center(center, heading, lw):
+    """Compute the verticles of a vehicle 
+    """
     vertices = np.empty((8,))
     rot1 = np.array([
             [ np.cos(heading),  np.sin(heading)],
@@ -39,6 +41,28 @@ def get_vertices_from_center(center, heading, lw):
     vertices[4:6] = center + 0.5 * rot3 @ lw
     vertices[6:8] = center + 0.5 * rot4 @ lw
     return vertices
+
+def get_vertices_from_centers(centers, headings, lw):
+    """Like get_vertices_from_center() but broadcasted
+    over multiple centers and headings.
+    """
+    C = np.cos(headings)
+    S = np.sin(headings)
+    rot11 = np.stack(( C,  S), axis=-1)
+    rot12 = np.stack(( S, -C), axis=-1)
+    rot21 = np.stack(( C, -S), axis=-1) 
+    rot22 = np.stack(( S,  C), axis=-1)
+    rot31 = np.stack((-C, -S), axis=-1)
+    rot32 = np.stack((-S,  C), axis=-1)
+    rot41 = np.stack((-C,  S), axis=-1)
+    rot42 = np.stack((-S, -C), axis=-1)
+    # Rot has shape (1000, 8, 2)
+    Rot = np.stack((rot11, rot12, rot21, rot22, rot31, rot32, rot41, rot42), axis=1)
+    # disp has shape (1000, 8)
+    disp = 0.5 * Rot @ lw
+    # centers has shape (1000, 8)
+    centers = np.tile(centers, (4,))
+    return centers + disp
 
 def obj_matmul(A, B):
     """Non-vectorized multiplication of arrays of object dtype"""

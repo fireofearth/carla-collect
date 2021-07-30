@@ -2,10 +2,10 @@ import pytest
 import numpy as np
 import carla
 
-from generate import get_all_vehicle_blueprints
-from generate import DataCollector
-from generate import NaiveMapQuerier, SceneConfig
-from generate.scene.misc_scene import (
+from collect.generate import get_all_vehicle_blueprints
+from collect.generate import DataCollector
+from collect.generate import NaiveMapQuerier, SceneConfig
+from collect.generate.scene.misc_scene import (
         BitmapSceneBuilder,
         DistanceTransformSceneBuilder,
         DistanceTransformSelectSceneBuilder,

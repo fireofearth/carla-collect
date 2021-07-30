@@ -28,7 +28,7 @@ from .map import MapQuerier, NaiveMapQuerier
 from .map import Map10HDBoundTIntersectionReader, IntersectionReader
 from .label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
 from .label import SampleLabelMap, SampleLabelFilter
-from .label import SegmentationLabel
+from .label import SegmentationLabel, carla_id_maker
 from .scene import SceneBuilder, SceneConfig
 from .scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
 
@@ -126,9 +126,10 @@ class DataCollector(AbstractDataCollector):
         self.__debug = debug
 
         # __make_scene_name : function
-        #     Scene names are episode/agent/frame
-        self.__make_scene_name = lambda frame : "{}/ep{:03d}/agent{:03d}/frame{:08d}".format(
-                self.__map_reader.map_name, self.episode, self.__ego_vehicle.id, frame)
+        #     Scene names (scene ID) are created using util.IDMaker
+        self.__make_scene_name = lambda frame: carla_id_maker.make_id(
+                map=self.__map_reader.map_name, episode=self.episode,
+                agent=self.__ego_vehicle.id, frame=frame)
 
         self.__world = self.__ego_vehicle.get_world()
 

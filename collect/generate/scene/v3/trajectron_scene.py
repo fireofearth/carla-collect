@@ -105,13 +105,14 @@ def augment_scene(scene, angle):
         if node.type == 'PEDESTRIAN':
             x = node.data.position.x.copy()
             y = node.data.position.y.copy()
+            vx = node.data.velocity.x.copy()
+            vy = node.data.velocity.y.copy()
+            ax = node.data.acceleration.x.copy()
+            ay = node.data.acceleration.y.copy()
 
             x, y = rotate_pc(np.array([x, y]), alpha)
-
-            vx = derivative_of(x, scene.dt)
-            vy = derivative_of(y, scene.dt)
-            ax = derivative_of(vx, scene.dt)
-            ay = derivative_of(vy, scene.dt)
+            vx, vy = rotate_pc(np.array([vx, vy]), alpha)
+            ax, ay = rotate_pc(np.array([ax, ay]), alpha)
 
             data_dict = {('position', 'x'): x,
                          ('position', 'y'): y,
@@ -126,36 +127,33 @@ def augment_scene(scene, angle):
         elif node.type == 'VEHICLE':
             x = node.data.position.x.copy()
             y = node.data.position.y.copy()
+            vx = node.data.velocity.x.copy()
+            vy = node.data.velocity.y.copy()
+            ax = node.data.acceleration.x.copy()
+            ay = node.data.acceleration.y.copy()
 
             heading = getattr(node.data.heading, '°').copy()
             heading += alpha
+            # sets heading in between [-pi, pi]
             heading = (heading + np.pi) % (2.0 * np.pi) - np.pi
 
             x, y = rotate_pc(np.array([x, y]), alpha)
-
-            vx = derivative_of(x, scene.dt)
-            vy = derivative_of(y, scene.dt)
-            ax = derivative_of(vx, scene.dt)
-            ay = derivative_of(vy, scene.dt)
-
-            v = np.stack((vx, vy), axis=-1)
-            v_norm = np.linalg.norm(np.stack((vx, vy), axis=-1), axis=-1, keepdims=True)
-            heading_v = np.divide(v, v_norm, out=np.zeros_like(v), where=(v_norm > 1.))
-            heading_x = heading_v[:, 0]
-            heading_y = heading_v[:, 1]
+            vx, vy = rotate_pc(np.array([vx, vy]), alpha)
+            ax, ay = rotate_pc(np.array([ax, ay]), alpha)
+            heading_x, heading_y = np.cos(heading), np.sin(heading)
 
             data_dict = {('position', 'x'): x,
                          ('position', 'y'): y,
                          ('velocity', 'x'): vx,
                          ('velocity', 'y'): vy,
-                         ('velocity', 'norm'): np.linalg.norm(np.stack((vx, vy), axis=-1), axis=-1),
+                         ('velocity', 'norm'): node.data.velocity.norm.copy(),
                          ('acceleration', 'x'): ax,
                          ('acceleration', 'y'): ay,
-                         ('acceleration', 'norm'): np.linalg.norm(np.stack((ax, ay), axis=-1), axis=-1),
+                         ('acceleration', 'norm'): node.data.acceleration.norm.copy(),
                          ('heading', 'x'): heading_x,
                          ('heading', 'y'): heading_y,
                          ('heading', '°'): heading,
-                         ('heading', 'd°'): derivative_of(heading, dt, radian=True)}
+                         ('heading', 'd°'): getattr(node.data.heading, 'd°').copy()}
 
             node_data = pd.DataFrame(data_dict, columns=data_columns_vehicle)
 
@@ -357,9 +355,6 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
         if node_df.iloc[0]['type'] == scene_config.node_type.VEHICLE and not node_id == 'ego':
             x, y = node_df['x'].values, node_df['y'].values
             curvature, pl, _ = trajectory_curvature(np.stack((x, y), axis=-1))
-            if pl < 1.0:  # vehicle is "not" moving
-                node_df[['x', 'y', 'heading']] = node_df[['x', 'y', 'heading']].values[0]
-                node_df[['v_x', 'v_y', 'a_x', 'a_y']] = 0.
             global total
             global curv_0_2
             global curv_0_1
@@ -373,9 +368,6 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
                     node_frequency_multiplier = 3*int(np.floor(total/curv_0_1))
         
         x, y = node_df['x'].values, node_df['y'].values
-        # Use derivatives instead
-        # v_x, v_y = node_df['v_x'].values, node_df['v_y'].values
-        # a_x, a_y = node_df['a_x'].values, node_df['a_y'].values
         v_x = derivative_of(x, scene.dt)
         v_y = derivative_of(y, scene.dt)
         a_x = derivative_of(v_x, scene.dt)
@@ -386,6 +378,7 @@ def process_carla_scene(scene, data, max_timesteps, scene_config):
             v_norm = np.linalg.norm(v, axis=-1)
             a_norm = np.linalg.norm(a, axis=-1)
             heading = node_df['heading'].values
+            heading = (heading + np.pi) % (2.0 * np.pi) - np.pi
             heading_x, heading_y = np.cos(heading), np.sin(heading)
             data_dict = {('position', 'x'): x,
                          ('position', 'y'): y,
@@ -466,22 +459,29 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         white_lines = data.map_data.white_lines
         dim = (int(pixels_per_m * y_size), int(pixels_per_m * x_size), 3)
         bitmap = np.zeros(dim)
+
+        """NuScenes bitmap format
+        scene.map[...].as_image() has shape (y, x, c)
+        Channel 1: lane, road_segment, drivable_area
+        Channel 2: road_divider
+        Channel 3: lane_divider"""
+        
         for polygon in road_polygons:
             rzpoly = ( pixels_per_m*(polygon[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
-            cv.fillPoly(bitmap, [rzpoly], (0,0,255))
-
-        for line in white_lines:
-            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
-                    .astype(int).reshape((-1,1,2))
-            cv.polylines(bitmap, [rzline], False, (255,0,0), thickness=2)
+            cv.fillPoly(bitmap, [rzpoly], (255,0,0))
 
         for line in yellow_lines:
             rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
                     .astype(int).reshape((-1,1,2))
             cv.polylines(bitmap, [rzline], False, (0,255,0), thickness=2)
         bitmap = bitmap.astype(np.uint8).transpose((2, 1, 0))
-        
+
+        for line in white_lines:
+            rzline = ( pixels_per_m*(line[:,:2] - np.array([x_min, y_min])) ) \
+                    .astype(int).reshape((-1,1,2))
+            cv.polylines(bitmap, [rzline], False, (0,0,255), thickness=2)
+
         # Create scene
         dt = data.fixed_delta_seconds * data.scene_config.record_interval
         scene = Scene(timesteps=max_timesteps + 1, dt=dt,

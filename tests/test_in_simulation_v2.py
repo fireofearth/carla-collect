@@ -13,11 +13,11 @@ import utility as util
 
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-
 # from collect.in_simulation.midlevel.v2 import MidlevelAgent
 from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
-
 from collect.generate.scene import OnlineConfig
+from collect.generate.scene.v2_2.trajectron_scene import (
+        TrajectronPlusPlusSceneBuilder)
 
 """Test the v2 midlevel controller
 
@@ -159,6 +159,7 @@ def scenario(params, eval_env, eval_stg):
                 control_horizon=control_horizon,
                 prediction_horizon=prediction_horizon,
                 n_predictions=n_predictions,
+                scene_builder_cls=TrajectronPlusPlusSceneBuilder,
                 scene_config=online_config)
         agent.start_sensor()
         assert agent.sensor_is_listening
