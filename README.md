@@ -11,15 +11,15 @@ Most of the instructions will be done in your console/shell/terminal from your h
 
 In these instructions, I may tell you to 'do' something, like do `git submodule update`. Do basically means execute a command in the console/shell/terminal.
 
-Step 1) Download the repository from Github:
+**Step 1**. Download the repository from Github:
 
-Step 1.1) `git clone` the repository `carla-collect` to your home directory, or any directory where you keep Github code.
+**Step 1.1**. `git clone` the repository `carla-collect` to your home directory, or any directory where you keep Github code.
 
-Step 1.2) Got to the directory `carla-collect/` of the repostory, do `git submodule update --init --recursive` to download the Git submodules `carla-collect/Trajectron-plus-plus` and `carla-collect/python-utility`.
+**Step 1.2**. Got to the directory `carla-collect/` of the repostory, do `git submodule update --init --recursive` to download the Git submodules `carla-collect/Trajectron-plus-plus` and `carla-collect/python-utility`.
 
-Step 2) Install the Python environment and Python dependencies.
+**Step 2**. Install the Python environment and Python dependencies.
 
-Step 2.1) Either use [Anaconda](https://www.anaconda.com/products/individual), or [Python venv](https://docs.python.org/3.6/library/venv.html) to install a virtual environment for Python. You can find a guide to using Anaconda [here](https://docs.anaconda.com/anaconda/user-guide/getting-started/).
+**Step 2.1**. Either use [Anaconda](https://www.anaconda.com/products/individual), or [Python venv](https://docs.python.org/3.6/library/venv.html) to install a virtual environment for Python. You can find a guide to using Anaconda [here](https://docs.anaconda.com/anaconda/user-guide/getting-started/).
 
 If you choose to install Anaconda, then after do:
 
@@ -28,34 +28,34 @@ conda create -n trajectron python=3.6
 conda activate trajectron
 ```
 
-Step 2.2) Install the dependencies for `carla-collect/Trajectron-plus-plus` submodule by going to the directory `carla-collect/` and doing:
+**Step 2.2**. Install the dependencies for `carla-collect/Trajectron-plus-plus` submodule by going to the directory `carla-collect/` and doing:
 
 ```
 pip install -r Trajectron-plus-plus/requirements.txt
 ```
 
-Step 2.3) Install the dependencies for `carla-collect` by going to the directory `carla-collect/` and doing:
+**Step 2.3**. Install the dependencies for `carla-collect` by going to the directory `carla-collect/` and doing:
 
 ```
 pip install -r requirements.txt
 ```
 
-Step 3) Install [CARLA Simulator](http://carla.org/). I personally prefer using the **B. Package installation** method from this [guide](https://carla.readthedocs.io/en/0.9.11/start_quickstart/#installation-summary) to install CARLA binaries to my local directory.
+**Step 3**. Install [CARLA Simulator](http://carla.org/). I personally prefer using the **B. Package installation** method from this [guide](https://carla.readthedocs.io/en/0.9.11/start_quickstart/#installation-summary) to install CARLA binaries to my local directory.
 
-Step 4) Edit the `carla-collect/env.sh` as needed. You'll specifically want to "Set CARLA Simulatory directory manually" by setting `CARLA_DIR` and "Enable the Python environment".
+**Step 4**. Edit the `carla-collect/env.sh` as needed. You'll specifically want to "Set CARLA Simulatory directory manually" by setting `CARLA_DIR` and "Enable the Python environment".
 
 Anytime you need to run something in `carla-collect`, please do `source carla-collect/env.sh`. This way your Python language interpreter will "know" the locations of some of the code you need to run for programs.
 
-Step 5) Create a directory `carla-collect/carla_v3-1-dataset`. Download the `.pkl` files for the preprocessed CARLA Synthesized dataset from the Cloud to there.
+**Step 5**. Create a directory `carla-collect/carla_v3-1-dataset`. Download the `.pkl` files for the preprocessed CARLA Synthesized dataset from the Cloud to there.  
 Cloud Link: <https://drive.google.com/drive/folders/1p8tpx6WEAlTM-yEGoK3fqsCzOasXafHN?usp=sharing>
 
-Step 6) Create a directory `carla-collect/Trajectron-plus-plus/experiments/processed`. Download the `.pkl` files for the preprocessed NuScenes dataset from the Cloud to there.
-Cloud Link:
+**Step 6**. Create a directory `carla-collect/Trajectron-plus-plus/experiments/processed`. Download the `.pkl` files for the preprocessed NuScenes dataset from the Cloud to there.  
+Cloud Link: <https://drive.google.com/drive/folders/1mKp1MLgGMdNaOXLOoD81jgunbbqdDwlU?usp=sharing>
 
-Step 7) Create a directory `carla-collect/Trajectron-plus-plus/experiments/nuScenes/models`. Download the `models_*` directories from the Cloud to there.
+**Step 7**. Create a directory `carla-collect/Trajectron-plus-plus/experiments/nuScenes/models`. Download the `models_*` directories from the Cloud to there.  
 Cloud Link: <https://drive.google.com/drive/folders/1EvJXD42KHwXn1lvktILKvv3W4WM4Pxd_?usp=sharing>
 
-Step 8) You're done! Now you can run the Jupyter notebooks `carla-collect/Trajectron-plus-plus/experiments/nuScenes/notebooks` by going to `carla-collect/Trajectron-plus-plus/experiments/nuScenes` and doing `source notebook.sh` to start the Jupyter server.
+**Step 8**. You're done! Now you can run the Jupyter notebooks `carla-collect/Trajectron-plus-plus/experiments/nuScenes/notebooks` by going to `carla-collect/Trajectron-plus-plus/experiments/nuScenes` and doing `source notebook.sh` to start the Jupyter server.
 
 The path `carla-collect/Trajectron-plus-plus/experiments/nuScenes` has the directory `nuScenes`, but it contains models and notebook results for both NuScenes and CARLA experiments.
 
