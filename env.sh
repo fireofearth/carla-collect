@@ -11,7 +11,7 @@ export CARLA_DIR=/home/$(whoami)/src/$CARLANAME
 export CPLEX_STUDIO_DIR1210=/opt/ibm/ILOG/CPLEX_Studio1210
 
 # Enable the Python environment
-conda activate trajectron
+conda activate trajectron-cplex
 
 # Automatic path linking
 export PYCARLA=$CARLA_DIR/PythonAPI/carla/dist/$CARLANAME-py3.7-linux-x86_64.egg
@@ -20,7 +20,7 @@ export UTILITY=$APPROOT/python-utility/utility
 export CARLAUTIL=$APPROOT/python-utility/carlautil
 
 # Setting Python path
-export PYTHONPATH=$PYCARLA:$APPROOT:$PYTHONPATH
+export PYTHONPATH=$PYCARLA:$UTILITY:$CARLAUTIL:$APPROOT:$PYTHONPATH
 export PYTHONPATH=$TRAJECTRONPP_DIR/experiments/nuScenes/devkit/python-sdk:$PYTHONPATH
 export PYTHONPATH=$TRAJECTRONPP_DIR/trajectron:$PYTHONPATH
 export PYTHONPATH=$TRAJECTRONPP_DIR/experiments/nuScenes:$PYTHONPATH
