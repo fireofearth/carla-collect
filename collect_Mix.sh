@@ -37,9 +37,9 @@ sleep 3
 
 python synthesize.py \
         --start-at-episode 20 \
-        --label Town06 \
-        --map Town06 \
-        --n-vehicles 180
+        --label Town10HD \
+        --map Town10HD \
+        --n-vehicles 50
 
 sleep 3
 
@@ -51,8 +51,4 @@ python synthesize.py \
 
 sleep 3
 
-python synthesize.py \
-        --start-at-episode 30 \
-        --label Town10HD \
-        --map Town10HD \
-        --n-vehicles 50
+

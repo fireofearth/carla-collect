@@ -1,9 +1,12 @@
+"""
+TODO: use custom exceptions
+"""
 
 class CollectException(Exception):
     pass
 
-class GenerateException(Exception):
+class GenerateException(CollectException):
     pass
 
-class InSimulationException(Exception):
+class InSimulationException(CollectException):
     pass

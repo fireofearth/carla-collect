@@ -115,7 +115,7 @@ def plot_h_polyhedron(ax, A, b, fc='none', ec='none', alpha=0.3):
     hs = scipy.spatial.HalfspaceIntersection(Ab, res.x)
     ch = scipy.spatial.ConvexHull(hs.intersections)
     x, y = zip(*hs.intersections[ch.vertices])
-    ax.fill(x, y, fc=fc, ec=ec, alpha=0.3)
+    ax.fill(x, y, fc=fc, ec=ec, alpha=alpha)
 
 def get_ovehicle_color_set():
     OVEHICLE_COLORS = [

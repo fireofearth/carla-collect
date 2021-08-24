@@ -49,6 +49,17 @@ def parse_arguments():
             dest='debug',
             help='Show debug information')
     argparser.add_argument(
+            '--host',
+            metavar='H',
+            default='127.0.0.1',
+            help='IP of the host server (default: 127.0.0.1)')
+    argparser.add_argument(
+            '-p', '--port',
+            metavar='P',
+            default=2000,
+            type=int,
+            help='TCP port to listen to (default: 2000)')
+    argparser.add_argument(
             '--n-groups',
             default=6,
             type=int,
@@ -142,6 +153,7 @@ def main():
     for _env in envs[1:]:
         env.scenes.extend(_env.scenes)
     logging.info(f"Collected {len(env.scenes)} samples.")
+
     sample_dict = dict_from_list(lambda scene: scene.name, env.scenes)
     sample_ids = list(sample_dict.keys())
     logging.info(f"Creating group indices of samples.")

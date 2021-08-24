@@ -30,6 +30,9 @@ To run one test call e.gl
 pytest --log-cli-level=INFO --capture=tee-sys tests/test_closed_loop.py::test_Town03_scenario[ovehicle_turn-ph4_ch1_np100]
 """
 
+##################
+# Town03 Scenarios
+
 CONTROL_ovehicle_turn = util.AttrDict(
     interval=(69*5, 76*5,),
     control=carla.VehicleControl(throttle=0.6)
@@ -44,6 +47,27 @@ SCENARIO_ovehicle_turn_short = pytest.param(
     87, [164], 77, 4, [CONTROL_ovehicle_turn], None,
     id='ovehicle_turn_short'
 )
+
+CONTROLS_intersection_1 = [
+    util.AttrDict(
+        interval=(0, 21*5,),
+        control=carla.VehicleControl(brake=1.0)
+    ),
+    util.AttrDict(
+        interval=(22*5, 34*5,),
+        control=carla.VehicleControl(throttle=0.5)
+    )
+]
+GOAL_intersection_1 = util.AttrDict(
+        x=-78.12, y=95.03+80, is_relative=False)
+SCENARIO_intersection_1 = pytest.param(
+    # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
+    56, [241], 35, 15, CONTROLS_intersection_1, GOAL_intersection_1,
+    id='intersection_1'
+)
+
+##################
+# Town06 Scenarios
 
 CONTROL_merge_lane = util.AttrDict(
     interval=(26*5, 35*5,),
@@ -125,19 +149,25 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
         agent.start_sensor()
         assert agent.sensor_is_listening
         if goal:
-            agent.set_goal(goal.x, goal.y, is_relative=True)
+            agent.set_goal(goal.x, goal.y, is_relative=goal.is_relative)
         
         """Move the spectator to the ego vehicle.
         The positioning is a little off"""
         state = agent.get_vehicle_state()
         goal = agent.get_goal()
-        world.get_spectator().set_transform(
-            carla.Transform(
-                carla.Location(
+        if goal.is_relative:
+            location = carla.Location(
                     x=state[0] + goal.x,
                     y=state[1] - goal.y,
-                    z=state[2] + 50
-                ),
+                    z=state[2] + 50)
+        else:
+            location = carla.Location(
+                    x=state[0] + (state[0] - goal.x) /2.,
+                    y=state[1] - (state[1] + goal.y) /2.,
+                    z=state[2] + 50)
+        world.get_spectator().set_transform(
+            carla.Transform(
+                location,
                 carla.Rotation(pitch=-90)
             )
         )
@@ -176,6 +206,7 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
     [
         SCENARIO_ovehicle_turn,
         SCENARIO_ovehicle_turn_short,
+        SCENARIO_intersection_1,
     ],
 )
 def test_Town03_scenario(ego_spawn_idx, other_spawn_ids,

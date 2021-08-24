@@ -2,8 +2,9 @@ from abc import ABC, abstractmethod
 
 import networkx as nx
 import numpy as np
-import carla
+import pandas as pd
 
+import carla
 import utility as util
 import carlautil
 import carlautil.debug
@@ -31,17 +32,147 @@ class MapData(object):
         self.white_lines = white_lines
 
 
+class MapDataExtractor(object):
+    """Utility class to extract properties of the CARLA map."""
+
+    def __init__(self, carla_world, carla_map):
+        self.carla_world = carla_world
+        self.carla_map = carla_map
+    
+    @staticmethod
+    def __lateral_shift(transform, shift):
+        transform.rotation.yaw += 90
+        return transform.location + shift * transform.get_forward_vector()
+
+    def __is_yellow_line(self, waypoint, shift):
+        w = self.carla_map.get_waypoint(self.__lateral_shift(waypoint.transform, shift),
+                project_to_road=False)
+        if w is None:
+            return False
+        return w.lane_id * waypoint.lane_id < 0
+
+    def extract_road_polygons_and_lines(self, sampling_precision=0.05):
+        """Extract road white and yellow dividing lines, and road polygons."""
+        road_polygons = []
+        yellow_lines  = []
+        white_lines   = []
+        topology      = [x[0] for x in self.carla_map.get_topology()]
+        topology      = sorted(topology, key=lambda w: w.transform.location.z)
+        for waypoint in topology:
+            waypoints = [waypoint]
+            nxt = waypoint.next(sampling_precision)[0]
+            while nxt.road_id == waypoint.road_id:
+                waypoints.append(nxt)
+                nxt = nxt.next(sampling_precision)[0]
+
+            left_marking  = carlautil.locations_to_ndarray(
+                    [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints],
+                    flip_y=True)
+            right_marking = carlautil.locations_to_ndarray(
+                    [self.__lateral_shift(w.transform, w.lane_width * 0.5) for w in waypoints],
+                    flip_y=True)
+            road_polygon = np.concatenate((left_marking, np.flipud(right_marking)), axis=0)
+
+            if len(road_polygon) > 2:
+                road_polygons.append(road_polygon)
+                if not waypoint.is_intersection:
+                    sample = waypoints[int(len(waypoints) / 2)]
+                    if self.__is_yellow_line(sample, -sample.lane_width * 1.1):
+                        yellow_lines.append(left_marking)
+                    else:
+                        white_lines.append(left_marking)
+                    if self.__is_yellow_line(sample, sample.lane_width * 1.1):
+                        yellow_lines.append(right_marking)
+                    else:
+                        white_lines.append(right_marking)
+
+        return util.AttrDict(road_polygons=road_polygons,
+                yellow_lines=yellow_lines, white_lines=white_lines)
+
+    def extract_waypoint_points(self, sampling_precision=4.0, slope_degrees=5.0):
+        """Extract slope topology of the map"""
+        slope_udegrees = (360. - slope_degrees)
+        wps = self.carla_map.generate_waypoints(sampling_precision)
+        def h(wp):
+            l = wp.transform.location
+            pitch = wp.transform.rotation.pitch
+            return np.array([l.x, l.y, l.z, pitch])
+        loc_and_pitch_of_wps = util.map_to_ndarray(h, wps)
+        wp_locations = loc_and_pitch_of_wps[:, :-1]
+        wp_pitches = loc_and_pitch_of_wps[:, -1]
+        self.wp_pitches = self.wp_pitches % 360.
+        wp_is_sloped = np.logical_and(
+                slope_degrees < self.wp_pitches,
+                self.wp_pitches < slope_udegrees)
+        return pd.DataFrame({'x': wp_locations[0], 'y': wp_locations[1], 'z': wp_locations[2],
+                'pitch': wp_pitches, 'is_sloped': wp_is_sloped})
+    
+    def extract_junction_with_portals(self):
+        carla_topology = self.carla_map.get_topology()
+        junctions = carlautil.get_junctions_from_topology_graph(carla_topology)
+        _junctions = []
+        for junction in junctions:
+            jx, jy, _ = carlautil.to_location_ndarray(junction, flip_y=True)
+            wps = junction.get_waypoints(carla.LaneType.Driving)
+            _wps = []
+            for wp1, wp2 in wps:
+                # wp1 is the waypoint entering into the intersection
+                # wp2 is the waypoint exiting out of the intersection
+                x, y, _ = carlautil.to_location_ndarray(wp1, flip_y=True)
+                _, yaw, _ = carlautil.to_rotation_ndarray(wp1, flip_y=True)
+                _wp1 = (x, y, yaw, wp1.lane_width)
+                x, y, _ = carlautil.to_location_ndarray(wp2, flip_y=True)
+                _, yaw, _ = carlautil.to_rotation_ndarray(wp2, flip_y=True)
+                _wp2 = (x, y, yaw, wp2.lane_width)
+                _wps.append((_wp1, _wp2))
+            _junctions.append(util.AttrDict(pos=np.array([jx, jy]), waypoints=np.array(_wps)))
+
+        return _junctions
+
+    def extract_junction_points(self, tlight_find_radius=25.):
+        carla_topology = self.carla_map.get_topology()
+        junctions = carlautil.get_junctions_from_topology_graph(carla_topology)
+        tlights = util.filter_to_list(lambda a: 'traffic_light' in a.type_id,
+                self.carla_world.get_actors())
+        tlight_distances = np.zeros((len(tlights), len(junctions),))
+        f = lambda j: carlautil.location_to_ndarray(j.bounding_box.location)
+        junction_locations = util.map_to_ndarray(f, junctions)
+        
+        g = lambda tl: carlautil.transform_to_location_ndarray(
+                tl.get_transform())
+        tlight_locations = util.map_to_ndarray(g, tlights)
+
+        for idx, junction in enumerate(junctions):
+            tlight_distances[:,idx] = np.linalg.norm(
+                    tlight_locations - junction_locations[idx], axis=1)
+
+        is_controlled_junction = (tlight_distances < tlight_find_radius).any(axis=0)
+        is_uncontrolled_junction = np.logical_not(is_controlled_junction)
+        controlled_junction_locations \
+                = junction_locations[is_controlled_junction]
+        uncontrolled_junction_locations \
+                = junction_locations[is_uncontrolled_junction]
+        return util.AttrDict(
+                controlled=controlled_junction_locations,
+                uncontrolled=uncontrolled_junction_locations)
+
+
+
 class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
     used to query whether an actor is in a certain part
     (i.e. intersection, hill) of the map for the sake of
-    labeling samples."""
+    labeling samples.
+    
+    TODO: refactor to use MapDataExtractor to get map data.
+    """
 
     # used by __extract_polygons_and_lines()
     EXTRACT_PRECISION = 0.05
 
+    # TODO: is this being used? Delete?
     # used by get_bounds_for_road_constraints()
-    BOUNDS_PRECISION = 1.0
+    # BOUNDS_PRECISION = 1.0
 
     @staticmethod
     def __lateral_shift(transform, shift):
@@ -59,8 +190,8 @@ class MapQuerier(ABC):
         """Extract map features (road lanes, road polygons) as 
         """
         road_polygons = []
-        yellow_lines = []
-        white_lines = []
+        yellow_lines  = []
+        white_lines   = []
         topology      = [x[0] for x in self.carla_map.get_topology()]
         topology      = sorted(topology, key=lambda w: w.transform.location.z)
         for waypoint in topology:
@@ -71,9 +202,11 @@ class MapQuerier(ABC):
                 nxt = nxt.next(self.EXTRACT_PRECISION)[0]
 
             left_marking  = carlautil.locations_to_ndarray(
-                    [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints])
+                    [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints],
+                    flip_y=True)
             right_marking = carlautil.locations_to_ndarray(
-                    [self.__lateral_shift(w.transform, w.lane_width * 0.5) for w in waypoints])
+                    [self.__lateral_shift(w.transform, w.lane_width * 0.5) for w in waypoints],
+                    flip_y=True)
             road_polygon = np.concatenate((left_marking, np.flipud(right_marking)), axis=0)
 
             if len(road_polygon) > 2:
@@ -88,8 +221,6 @@ class MapQuerier(ABC):
                         yellow_lines.append(right_marking)
                     else:
                         white_lines.append(right_marking)
-        for a in road_polygons + yellow_lines + white_lines:
-            a[:,1] *= -1
         return MapData(road_polygons, yellow_lines, white_lines)
 
     def __init__(self, carla_world, carla_map, debug=False):
@@ -98,10 +229,11 @@ class MapQuerier(ABC):
         self._debug = debug
         self.map_data = self.__extract_polygons_and_lines()
 
-    def get_bounds_for_road_constraints(self, vehicle):
-        wp = self.carla_map.get_waypoint(vehicle.get_location())
-        wp.next(self.BOUNDS_PRECISION)
-        BOUNDS_PRECISIONl
+    # TODO: what is this? Delete?
+    # def get_bounds_for_road_constraints(self, vehicle):
+    #     wp = self.carla_map.get_waypoint(vehicle.get_location())
+    #     wp.next(self.BOUNDS_PRECISION)
+    #     BOUNDS_PRECISIONl
 
     @property
     def map_name(self):
@@ -170,6 +302,8 @@ class Map10HDBoundTIntersectionReader(MapQuerier):
 
 class IntersectionReader(MapQuerier):
     """Used to query whether actor is on an intersection and a hill on the map.
+
+    TODO: refactor to use MapDataExtractor to get map data.
     """
 
     # degree threshold for sloped road.

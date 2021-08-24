@@ -1,3 +1,6 @@
+"""
+"""
+
 import collections
 
 import numpy as np
@@ -129,7 +132,9 @@ def get_straight_lanes(start_wp, tol=2.0):
     return np.concatenate(util.map_to_list(f, wps))
 
 def get_road_segment_enclosure(start_wp, tol=2.0):
-    """
+    """Get rectangle that tightly inner approximates of the road segment
+    containing the starting waypoint.
+
     Parameters
     ==========
     start_wp : carla.Waypoint
