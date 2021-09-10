@@ -13,6 +13,7 @@ import logging
 import collections
 import weakref
 import copy
+import numbers
 
 # Profiling libraries
 import functools
@@ -44,9 +45,9 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from ..util import (get_vertices_from_center, obj_matmul,
+from ..util import (get_vertices_from_center,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
-        plot_lcss_prediction, get_vertices_from_centers)
+        plot_multiple_coinciding_controls, get_vertices_from_centers)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...lowlevel import LocalPlanner
@@ -136,6 +137,7 @@ class MidlevelAgent(AbstractDataCollector):
     def __make_global_params(self):
         """Get Global LCSS parameters used across all loops"""
         params = util.AttrDict()
+        params.M_big = 1000
         params.A, params.B = self.__get_state_space_representation(
                 self.__prediction_timestep)
         # number of state variables x, number of input variables u
@@ -177,9 +179,11 @@ class MidlevelAgent(AbstractDataCollector):
             n_burn_interval=4,
             prediction_horizon=8,
             n_predictions=100,
+            n_coincide=6,
             scene_builder_cls=TrajectronPlusPlusSceneBuilder,
             scene_config=OnlineConfig()):
-        
+        assert control_horizon <= prediction_horizon
+        assert n_coincide <= control_horizon
         self.__ego_vehicle = ego_vehicle
         self.__map_reader = map_reader
         self.__world = self.__ego_vehicle.get_world()
@@ -201,6 +205,7 @@ class MidlevelAgent(AbstractDataCollector):
         #   Number of predictions timesteps to predict other vehicles over.
         self.__prediction_horizon = prediction_horizon
         self.__n_predictions = n_predictions
+        self.__n_coincide = n_coincide
         self.__eval_stg = eval_stg
 
         vehicles = self.__world.get_actors(other_vehicle_ids)
@@ -329,10 +334,14 @@ class MidlevelAgent(AbstractDataCollector):
     def make_local_params(self, ovehicles):
         """Get Local LCSS parameters that are environment dependent."""
         params = util.AttrDict()
-        params.O = len(ovehicles) # number of obstacles
+        # O - number of obstacles
+        params.O = len(ovehicles)
+        # K - for each o=1,...,O K[o] is the number of outer approximations for vehicle o
         params.K = np.zeros(params.O, dtype=int)
         for idx, vehicle in enumerate(ovehicles):
             params.K[idx] = vehicle.n_states
+        # N_traj - number of planned trajectories to compute
+        params.N_traj = np.prod(params.K)
 
         p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
         p_0_y = -p_0_y # need to flip about x-axis
@@ -352,7 +361,11 @@ class MidlevelAgent(AbstractDataCollector):
         Parameters
         ==========
         p_x : np.array of docplex.mp.vartype.VarType
+            Has p_x = <p_x_1, p_x_2, ..., p_x_T> where timesteps T is the
+            extent of motion plan to enforce constraints in the x axis.  
         p_y : np.array of docplex.mp.vartype.VarType
+            Has p_y = <p_y_1, p_y_2, ..., p_y_T> where timesteps T is the
+            extent of motion plan to enforce constraints in the y axis.
         """
         b_length, f_length, r_width, l_width = self.__road_seg_params
         mtx = util.rotation_2d(self.__road_seg_starting[2])
@@ -381,7 +394,7 @@ class MidlevelAgent(AbstractDataCollector):
             plt.show()
 
         pos = np.stack([p_x, p_y], axis=1)
-        pos = obj_matmul((pos - shift), mtx.T)
+        pos = util.obj_matmul((pos - shift), mtx.T)
         constraints = []
         constraints.extend([-b_length <= z             for z in pos[:, 0]])
         constraints.extend([             z <= f_length for z in pos[:, 0]])
@@ -398,7 +411,11 @@ class MidlevelAgent(AbstractDataCollector):
         Parameters
         ==========
         v_x : np.array of docplex.mp.vartype.VarType
+            Has v_x = <v_x_1, v_x_2, ..., v_x_T> where timesteps T is the
+            extent of motion plan to enforce constraints in the x axis.  
         v_y : np.array of docplex.mp.vartype.VarType
+            Has v_y = <v_y_1, v_y_2, ..., v_y_T> where timesteps T is the
+            extent of motion plan to enforce constraints in the y axis.
         """
         v_lim = self.__ego_vehicle.get_speed_limit() # is m/s
         _, theta, _ = carlautil.actor_to_rotation_ndarray(self.__ego_vehicle)
@@ -450,8 +467,8 @@ class MidlevelAgent(AbstractDataCollector):
 
     def __compute_vertices(self, params, ovehicles):
         """Compute verticles from predictions."""
-        T, K, n_ov = self.__params.T, params.K, params.O
-        vertices = np.empty((T, np.max(K), n_ov), dtype=object).tolist()
+        T, K, O = self.__params.T, params.K, params.O
+        vertices = np.empty((T, np.max(K), O,), dtype=object).tolist()
         for ov_idx, ovehicle in enumerate(ovehicles):
             for latent_idx in range(ovehicle.n_states):
                 for t in range(T):
@@ -462,95 +479,117 @@ class MidlevelAgent(AbstractDataCollector):
         return vertices
     
     def __compute_overapproximations(self, vertices, params, ovehicles):
-        """Compute the approximation of the union of obstacle sets"""
-        T, K, n_ov = self.__params.T, params.K, params.O
-        A_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
-        b_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
-        for ov_idx, ovehicle in enumerate(ovehicles):
-            for latent_idx in range(ovehicle.n_states):
-                for t in range(T):
+        """Compute the approximation of the union of obstacle sets.
+
+        Parameters
+        ==========
+        vertices : ndarray
+            Verticles to for overapproximations.
+        params : util.AttrDict
+            Parameters of motion planning problem.
+        ovehicles : list of OVehicle
+            Vehicles to compute overapproximations from.
+
+        Returns
+        =======
+        ndarray
+            Collection of A matrices of shape (N_traj, T, O, L, 2).
+            Axis 2 (zero-based) is sorted by ovehicle.
+        ndarray
+            Collection of b vectors of shape (N_traj, T, O, L).
+            Axis 2 (zero-based) is sorted by ovehicle.
+        """
+        N_traj, T, O = params.N_traj, self.__params.T, params.O
+        A_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
+        b_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
+        for traj_idx, latent_indices in enumerate(
+                util.product_list_of_list([range(ovehicle.n_states) for ovehicle in ovehicles])):
+            for t in range(T):
+                for ov_idx, ovehicle in enumerate(ovehicles):
+                    latent_idx = latent_indices[ov_idx]
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
                     A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
-                    A_union[t][latent_idx][ov_idx] = A_union_k
-                    b_union[t][latent_idx][ov_idx] = b_union_k
-        return A_union, b_union
+                    A_unions[traj_idx][t][ov_idx] = A_union_k
+                    b_unions[traj_idx][t][ov_idx] = b_union_k
+
+        return np.array(A_unions), np.array(b_unions)
 
     def do_highlevel_control(self, params, ovehicles):
         """Decide parameters.
 
         Since we're doing multiple coinciding, we want ot compute 
         """
-        # TODO: assign eps^k_o and beta^k_o to the vehicles.
-        # Skipping that for now.
-    
         vertices = self.__compute_vertices(params, ovehicles)
-        A_union, b_union = self.__compute_overapproximations(vertices, params, ovehicles)
+        A_unions, b_unions = self.__compute_overapproximations(vertices, params, ovehicles)
         
         """Apply motion planning problem"""
-        model = docplex.mp.model.Model(name="proposed_problem")
-        L, T, K, Gamma, nu, nx = self.__params.L, self.__params.T, params.K, \
-                self.__params.Gamma, self.__params.nu, self.__params.nx
-        u = np.array(model.continuous_var_list(nu*T, lb=-np.inf, name='u'), dtype=object)
-        delta_tmp = model.binary_var_matrix(L*np.sum(K), T, name='delta')
-        delta = np.empty((L*np.sum(K), T,), dtype=object)
-        for k, v in delta_tmp.items():
-            delta[k] = v
-        
-        x_future = params.States_free_init + obj_matmul(Gamma, u)
-        # TODO: hardcoded value, need to specify better
-        big_M = 1000 # conservative upper-bound
+        N_traj, L, T, K, O, Gamma, nu, nx = params.N_traj, self.__params.L, self.__params.T, params.K, \
+                params.O, self.__params.Gamma, self.__params.nu, self.__params.nx
+        model = docplex.mp.model.Model(name='obstacle_avoidance')
+        # set up controls variables for each trajectory
+        u = np.array(model.continuous_var_list(N_traj*T*nu, lb=-np.inf, ub=np.inf, name='control'))
+        Delta = np.array(model.binary_var_list(O*L*N_traj*T, name='delta')).reshape(N_traj, T, O, L)
 
-        x1 = x_future[nx::nx]
-        x2 = x_future[nx + 1::nx]
-        x3 = x_future[nx + 2::nx]
-        x4 = x_future[nx + 3::nx]
-        u1 = u[0::nu]
-        u2 = u[1::nu]
+        # U has shape (N_traj, T*nu)
+        U = u.reshape(N_traj, -1)
+        # Gamma has shape (nx*(T + 1), nu*T) so X has shape (N_traj, nx*(T + 1))
+        X = util.obj_matmul(U, Gamma.T)
+        # X, U have shapes (N_traj, T, nx) and (N_traj, T, nu) resp.
+        X = (X + params.States_free_init).reshape(N_traj, -1, nx)[..., 1:, :]
+        U = U.reshape(N_traj, -1, nu)
 
-        model.add_constraints(self.compute_boundary_constraints(x1, x2))
-        model.add_constraints(self.compute_velocity_constraints(x3, x4))
-        model.add_constraints(self.compute_acceleration_constraints(u1, u2))
+        for _U, _X in zip(U, X):
+            # _X, _U have shapes (T, nx) and (T, nu) resp.
+            p_x, p_y = _X[..., 0], _X[..., 1]
+            v_x, v_y = _X[..., 2], _X[..., 3]
+            u_x, u_y = _U[..., 0], _U[..., 1]
+            model.add_constraints(self.compute_boundary_constraints(p_x, p_y))
+            model.add_constraints(self.compute_velocity_constraints(v_x, v_y))
+            model.add_constraints(self.compute_acceleration_constraints(u_x, u_y))
 
-        X = np.stack([x1, x2], axis=1)
-        T, K, diag = self.__params.T, params.K, self.__params.diag
-        for ov_idx, ovehicle in enumerate(ovehicles):
-            n_states = ovehicle.n_states
-            sum_clu = np.sum(K[:ov_idx])
-            for latent_idx in range(n_states):
-                for t in range(T):
-                    A_obs = A_union[t][latent_idx][ov_idx]
-                    b_obs = b_union[t][latent_idx][ov_idx]
-                    indices = 4*(sum_clu + latent_idx) + np.arange(0,4)
-                    lhs = obj_matmul(A_obs, X[t]) + big_M*(1-delta[indices,t])
-                    rhs = b_obs + diag
+        # set up obstacle constraints
+        M_big, N_traj, T, diag = self.__params.M_big, params.N_traj, self.__params.T, self.__params.diag
+        for n in range(N_traj):
+            # for each obstacle/trajectory
+            A_union, b_union = A_unions[n], b_unions[n]
+            for t in range(T):
+                # for each timestep
+                As, bs = A_union[t], b_union[t]
+                for o, (A, b) in enumerate(zip(As, bs)):
+                    lhs = util.obj_matmul(A, X[n,t,:2]) + M_big*(1 - Delta[n,t,o])
+                    rhs = b + diag
                     model.add_constraints([l >= r for (l,r) in zip(lhs, rhs)])
-                    model.add_constraint(np.sum(delta[indices, t]) >= 1)
+                    model.add_constraint(np.sum(Delta[n,t,o]) >= 1)
         
+        # set up coinciding constraints
+        for t in range(0, self.__n_coincide):
+            for x1, x2 in util.pairwise(X[:,t]):
+                model.add_constraints([l == r for (l,r) in zip(x1, x2)])
+
         # start from current vehicle position and minimize the objective
         p_x, p_y, _ = carlautil.actor_to_location_ndarray(
-                self.__ego_vehicle)
-        p_y = -p_y # need to flip about x-axis
+                self.__ego_vehicle, flip_y=True)
         if self.__goal.is_relative:
             goal_x, goal_y = p_x + self.__goal.x, p_y + self.__goal.y
         else:
             goal_x, goal_y = self.__goal.x, self.__goal.y
         start = np.array([p_x, p_y])
         goal = np.array([goal_x, goal_y])
-        cost = (x1[-1] - goal_x)**2 + (x2[-1] - goal_y)**2
+        cost = np.sum((X[:,-1,:2] - goal)**2)
         model.minimize(cost)
         # model.print_information()
         s = model.solve()
         # model.print_solution()
 
-        u_star = np.array([ui.solution_value for ui in u])
+        f = lambda x: x if isinstance(x, numbers.Number) else x.solution_value
+
+        U_star = util.obj_vectorize(f, U)
         cost = cost.solution_value
-        x1 = np.array([x1i.solution_value for x1i in x1])
-        x2 = np.array([x2i.solution_value for x2i in x2])
-        X_star = np.stack((x1, x2)).T
-        return util.AttrDict(cost=cost, u_star=u_star, X_star=X_star,
-                A_union=A_union, b_union=b_union, vertices=vertices,
+        X_star = util.obj_vectorize(f, X)
+        return util.AttrDict(cost=cost, U_star=U_star, X_star=X_star,
+                A_unions=A_unions, b_unions=b_unions, vertices=vertices,
                 start=start, goal=goal)
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
@@ -561,17 +600,13 @@ class MidlevelAgent(AbstractDataCollector):
         ctrl_result = self.do_highlevel_control(params, ovehicles)
 
         """Get trajectory"""
+        # X has shape (T+1, nx)
+        X = np.concatenate((ctrl_result.start[None], ctrl_result.X_star[0, :, :2]))
         trajectory = []
-        x, y, _ = carlautil.actor_to_location_ndarray(
-                self.__ego_vehicle)
-        X = np.concatenate((np.array([x, y])[None], ctrl_result.X_star))
-        n_steps = X.shape[0]
-        headings = []
-        for t in range(1, n_steps):
+        for t in range(1, self.__n_coincide + 1):
             x, y = X[t]
             y = -y # flip about x-axis again to move back to UE coordinates
             yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
-            headings.append(yaw)
              # flip about x-axis again to move back to UE coordinates
             yaw = util.reflect_radians_about_x_axis(yaw)
             transform = carla.Transform(
@@ -583,12 +618,11 @@ class MidlevelAgent(AbstractDataCollector):
         if plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
-            ctrl_result.headings = headings
             lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
             ego_bbox = [lon, lat]
             params.update(self.__params)
-            plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
-                    self.__prediction_horizon, ego_bbox, filename=filename)
+            plot_multiple_coinciding_controls(pred_result, ovehicles, params,
+                    ctrl_result, ego_bbox, filename=filename)
 
         return trajectory
 
