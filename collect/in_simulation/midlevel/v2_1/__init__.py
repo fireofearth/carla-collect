@@ -18,10 +18,6 @@ import collections
 import weakref
 import copy
 
-# Profiling libraries
-import functools
-import cProfile, pstats, io
-
 # PyPI libraries
 import numpy as np
 import scipy.spatial
@@ -36,9 +32,9 @@ import control
 import control.matlab
 import docplex.mp
 import docplex.mp.model
-import carla
 
 # Local libraries
+import carla
 import utility as util
 import carlautil
 import carlautil.debug
@@ -48,7 +44,7 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from ..util import (get_vertices_from_center, obj_matmul,
+from ..util import (get_vertices_from_center, obj_matmul, profile,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
         plot_lcss_prediction, get_vertices_from_centers)
 from ..ovehicle import OVehicle
@@ -62,50 +58,6 @@ from ....generate.scene.v2_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 from ....generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene)
-
-
-def profile(sort_by='cumulative', lines_to_print=None, strip_dirs=False):
-    """A time profiler decorator.
-    Inspired by and modified the profile decorator of Giampaolo Rodola:
-    http://code.activestate.com/recipes/577817-profile-decorator/
-    Args:
-        output_file: str or None. Default is None
-            Path of the output file. If only name of the file is given, it's
-            saved in the current directory.
-            If it's None, the name of the decorated function is used.
-        sort_by: str or SortKey enum or tuple/list of str/SortKey enum
-            Sorting criteria for the Stats object.
-            For a list of valid string and SortKey refer to:
-            https://docs.python.org/3/library/profile.html#pstats.Stats.sort_stats
-        lines_to_print: int or None
-            Number of lines to print. Default (None) is for all the lines.
-            This is useful in reducing the size of the printout, especially
-            that sorting by 'cumulative', the time consuming operations
-            are printed toward the top of the file.
-        strip_dirs: bool
-            Whether to remove the leading path info from file names.
-            This is also useful in reducing the size of the printout
-    Returns:
-        Profile of the decorated function
-    """
-    def inner(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            pr = cProfile.Profile()
-            pr.enable()
-            retval = func(*args, **kwargs)
-            pr.disable()
-            s = io.StringIO()
-            ps = pstats.Stats(pr, stream=s)
-            if strip_dirs:
-                ps.strip_dirs()
-            ps.sort_stats(sort_by)
-            ps.print_stats(lines_to_print)
-            logging.info(f"code profile of {func.__name__}")
-            logging.info(s.getvalue())
-            return retval
-        return wrapper
-    return inner
 
 
 class MidlevelAgent(AbstractDataCollector):
@@ -459,13 +411,6 @@ class MidlevelAgent(AbstractDataCollector):
         for ov_idx, ovehicle in enumerate(ovehicles):
             for latent_idx in range(ovehicle.n_states):
                 for t in range(T):
-                    # ps = ovehicle.pred_positions[latent_idx]
-                    # yaws = ovehicle.pred_yaws[latent_idx]
-                    # n_p = ps.shape[0]
-                    # vertices[t][latent_idx][ov_idx] = np.zeros((n_p, 8))
-                    # for k in range(n_p):
-                    #     vertices[t][latent_idx][ov_idx][k] = get_vertices_from_center(
-                    #             ps[k,t], yaws[k,t], ovehicle.bbox)
                     ps = ovehicle.pred_positions[latent_idx][:,t]
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
                     vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
@@ -549,7 +494,13 @@ class MidlevelAgent(AbstractDataCollector):
         cost = (x1[-1] - goal_x)**2 + (x2[-1] - goal_y)**2
         model.minimize(cost)
         # model.print_information()
-        s = model.solve()
+        # model.parameters.read.datacheck = 1
+        should_log_cplex = True
+        if should_log_cplex:
+            model.parameters.mip.display = 5
+            s = model.solve(log_output=True)
+        else:
+            model.solve()
         # model.print_solution()
 
         u_star = np.array([ui.solution_value for ui in u])
@@ -587,7 +538,7 @@ class MidlevelAgent(AbstractDataCollector):
                     carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = True
+        plot_scenario = False
         if plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"

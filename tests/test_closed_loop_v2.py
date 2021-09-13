@@ -7,8 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import matplotlib.cm as cm
-import carla
 
+import carla
 import utility as util
 
 from collect.generate import get_all_vehicle_blueprints
@@ -26,8 +26,8 @@ pytest --collect-only
 
 To run tests call
 pytest --log-cli-level=INFO --capture=tee-sys
-To run one test call e.gl
-pytest --log-cli-level=INFO --capture=tee-sys tests/test_closed_loop.py::test_Town03_scenario[ovehicle_turn-ph4_ch1_np100]
+To run one test call e.g.
+pytest --log-cli-level=INFO --capture=tee-sys tests/test_closed_loop_v2.py::test_Town03_scenario[ovehicle_turn-ph4_ch1_np100]
 """
 
 ##################
@@ -84,6 +84,9 @@ SCENARIO_merge_lane_short = pytest.param(
     id='merge_lane_short'
 )
 
+###########
+# Variables
+
 VARIABLES_ph8_ch8_np100 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
     8, 8, 100,
@@ -91,7 +94,7 @@ VARIABLES_ph8_ch8_np100 = pytest.param(
 )
 VARIABLES_ph8_ch8_np5000 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions
-    8, 8, 100,
+    8, 8, 5000,
     id='ph8_ch8_np5000'
 )
 VARIABLES_ph4_ch1_np5000 = pytest.param(

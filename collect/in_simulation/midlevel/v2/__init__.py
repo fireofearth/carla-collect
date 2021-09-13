@@ -38,7 +38,7 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from ..util import (get_vertices_from_center, obj_matmul,
+from ..util import (get_vertices_from_center, obj_matmul, profile,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
         plot_lcss_prediction)
 from ..ovehicle import OVehicle
@@ -74,6 +74,7 @@ class MidlevelAgent(AbstractDataCollector):
             n_burn_interval=4,
             prediction_horizon=8,
             n_predictions=100,
+            scene_builder_cls=TrajectronPlusPlusSceneBuilder,
             scene_config=OnlineConfig()):
         
         self.__ego_vehicle = ego_vehicle
@@ -83,9 +84,9 @@ class MidlevelAgent(AbstractDataCollector):
         # __first_frame : int
         #     First frame in simulation. Used to find current timestep.
         self.__first_frame = None
-
         self.__scene_builder = None
         self.__scene_config = scene_config
+        self.__scene_builder_cls = scene_builder_cls
         self.__control_horizon = control_horizon
         self.__n_burn_interval = n_burn_interval
         self.__prediction_horizon = prediction_horizon
@@ -446,7 +447,9 @@ class MidlevelAgent(AbstractDataCollector):
         cost = (x1[-1] - goal_x)**2 + (x2[-1] - goal_y)**2
         model.minimize(cost)
         # model.print_information()
-        s = model.solve()
+        model.parameters.mip.display = 5
+        model.parameters.read.datacheck = 1
+        s = model.solve(log_output=True)
         # model.print_solution()
 
         u_star = np.array([ui.solution_value for ui in u])
@@ -458,6 +461,7 @@ class MidlevelAgent(AbstractDataCollector):
                 A_union=A_union, b_union=b_union, vertices=vertices,
                 start=start, goal=goal)
 
+    @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
@@ -483,17 +487,19 @@ class MidlevelAgent(AbstractDataCollector):
             trajectory.append(transform)
 
         """Plot scenario"""
-        ctrl_result.headings = headings
-        lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
-        ego_bbox = [lon, lat]
-        plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
-                self.__prediction_horizon, ego_bbox)
+        plot_scenario = False
+        if plot_scenario:
+            ctrl_result.headings = headings
+            lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
+            ego_bbox = [lon, lat]
+            plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
+                    self.__prediction_horizon, ego_bbox)
 
         return trajectory
 
     def do_first_step(self, frame):
         self.__first_frame = frame
-        self.__scene_builder = TrajectronPlusPlusSceneBuilder(
+        self.__scene_builder = self.__scene_builder_cls(
             self,
             self.__map_reader,
             self.__ego_vehicle,

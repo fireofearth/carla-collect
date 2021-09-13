@@ -26,12 +26,12 @@ pytest --collect-only
 
 To run tests call
 pytest --log-cli-level=INFO --capture=tee-sys
-To run one test call e.gl
-pytest --log-cli-level=INFO --capture=tee-sys tests/test_in_simulation_v3.py::test_Town03_scenario[ovehicle_turn]
+To run one test call e.g.
+pytest --log-cli-level=INFO --capture=tee-sys tests/test_closed_loop_v3.py::test_Town03_scenario[ovehicle_turn-ph4_ch1_np100]
 """
 
 ##################
-# Town03 scenarios
+# Town03 Scenarios
 
 CONTROLS_intersection_1 = [
     util.AttrDict(
@@ -44,32 +44,30 @@ CONTROLS_intersection_1 = [
     )
 ]
 GOAL_intersection_1 = util.AttrDict(
-        x=0, y=50, is_relative=True)
+        x=-78.12, y=95.03+80, is_relative=False)
 SCENARIO_intersection_1 = pytest.param(
     # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
-    56, [241], 35, CONTROLS_intersection_1, GOAL_intersection_1,
+    56, [241], 35, 15, CONTROLS_intersection_1, GOAL_intersection_1,
     id='intersection_1'
 )
 
-VARIABLES_ph8_ch8_np100_ncoin1 = pytest.param(
+###########
+# Variables
+
+VARIABLES_ph4_ch1_np5000_ncoin1 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions,n_coincide
-    8, 8, 100, 4,
-    id='ph8_ch8_np100_ncoin1'
+    4, 1, 5000, 1,
+    id='ph4_ch1_np5000_ncoin1'
 )
-VARIABLES_ph8_ch8_np100_ncoin4 = pytest.param(
+VARIABLES_ph4_ch1_np100_ncoin1 = pytest.param(
     # prediction_horizon,control_horizon,n_predictions,n_coincide
-    8, 8, 100, 4,
-    id='ph8_ch8_np100_ncoin4'
-)
-VARIABLES_ph8_ch8_np1000_ncoin4 = pytest.param(
-    # prediction_horizon,control_horizon,n_predictions,,n_coincide
-    8, 8, 1000, 4,
-    id='ph8_ch8_np1000_ncoin4'
+    4, 1, 100, 1,
+    id='ph4_ch1_np100_ncoin1'
 )
 
 def scenario(scenario_params, variables, eval_env, eval_stg):
-    ego_spawn_idx, other_spawn_ids, n_burn_interval, controls, \
-            goal, carla_synchronous = scenario_params
+    ego_spawn_idx, other_spawn_ids, n_burn_interval, run_interval, \
+            controls, goal, carla_synchronous = scenario_params
     prediction_horizon, control_horizon, n_predictions, n_coincide = variables
     ego_vehicle = None
     agent = None
@@ -112,26 +110,32 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
         agent.start_sensor()
         assert agent.sensor_is_listening
         if goal:
-            agent.set_goal(goal.x, goal.y, is_relative=True)
+            agent.set_goal(goal.x, goal.y, is_relative=goal.is_relative)
         
         """Move the spectator to the ego vehicle.
         The positioning is a little off"""
         state = agent.get_vehicle_state()
         goal = agent.get_goal()
-        world.get_spectator().set_transform(
-            carla.Transform(
-                carla.Location(
+        if goal.is_relative:
+            location = carla.Location(
                     x=state[0] + goal.x,
                     y=state[1] - goal.y,
-                    z=state[2] + 50
-                ),
+                    z=state[2] + 50)
+        else:
+            location = carla.Location(
+                    x=state[0] + (state[0] - goal.x) /2.,
+                    y=state[1] - (state[1] + goal.y) /2.,
+                    z=state[2] + 50)
+        world.get_spectator().set_transform(
+            carla.Transform(
+                location,
                 carla.Rotation(pitch=-90)
             )
         )
 
         n_burn_frames = n_burn_interval*online_config.record_interval
-        control_frames = n_coincide*online_config.record_interval - 1
-        for idx in range(n_burn_frames + control_frames):
+        run_frames = run_interval*online_config.record_interval
+        for idx in range(n_burn_frames + run_frames):
             control = None
             for ctrl in controls:
                 if ctrl.interval[0] <= idx and idx <= ctrl.interval[1]:
@@ -153,21 +157,23 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
 @pytest.mark.parametrize(
     "prediction_horizon,control_horizon,n_predictions,n_coincide",
     [
-        VARIABLES_ph8_ch8_np100_ncoin1,
-        VARIABLES_ph8_ch8_np100_ncoin4,
-        VARIABLES_ph8_ch8_np1000_ncoin4,
+        VARIABLES_ph4_ch1_np100_ncoin1,
+        VARIABLES_ph4_ch1_np5000_ncoin1,
     ],
 )
 @pytest.mark.parametrize(
-    "ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal",
+    "ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal",
     [
         SCENARIO_intersection_1,
     ],
 )
-def test_Town03_scenario(ego_spawn_idx, other_spawn_ids, n_burn_interval, controls,
-        goal, prediction_horizon, control_horizon, n_predictions, n_coincide,
+def test_Town03_scenario(ego_spawn_idx, other_spawn_ids,
+        n_burn_interval, run_interval, controls, goal,
+        prediction_horizon, control_horizon,
+        n_predictions, n_coincide,
         carla_Town03_synchronous, eval_env, eval_stg_cuda):
-    scenario_params = (ego_spawn_idx, other_spawn_ids, n_burn_interval, controls,
+    scenario_params = (ego_spawn_idx, other_spawn_ids,
+            n_burn_interval, run_interval, controls,
             goal, carla_Town03_synchronous)
     variables = (prediction_horizon, control_horizon, n_predictions, n_coincide)
     scenario(scenario_params, variables, eval_env, eval_stg_cuda)

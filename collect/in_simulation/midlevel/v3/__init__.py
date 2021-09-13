@@ -580,7 +580,12 @@ class MidlevelAgent(AbstractDataCollector):
         cost = np.sum((X[:,-1,:2] - goal)**2)
         model.minimize(cost)
         # model.print_information()
-        s = model.solve()
+        should_log_cplex = True
+        if should_log_cplex:
+            model.parameters.mip.display = 5
+            s = model.solve(log_output=True)
+        else:
+            model.solve()
         # model.print_solution()
 
         f = lambda x: x if isinstance(x, numbers.Number) else x.solution_value
