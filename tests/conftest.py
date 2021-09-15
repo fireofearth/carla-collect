@@ -91,8 +91,20 @@ def carla_Town03():
     return instantiate_simulator('Town03')
 
 @pytest.fixture(scope="module")
+def carla_Town04():
+    return instantiate_simulator('Town04')
+
+@pytest.fixture(scope="module")
+def carla_Town05():
+    return instantiate_simulator('Town05')
+
+@pytest.fixture(scope="module")
 def carla_Town06():
     return instantiate_simulator('Town06')
+
+@pytest.fixture(scope="module")
+def carla_Town07():
+    return instantiate_simulator('Town07')
 
 @pytest.fixture(scope="module")
 def carla_Town10HD():
@@ -105,7 +117,6 @@ def instantiate_synchronous(request, carla_Town):
         if original_settings:
             world.apply_settings(original_settings)
     request.addfinalizer(tear_down)
-    # Mock DataGenerator.run()
     original_settings = world.get_settings()
     settings = world.get_settings()
     settings.fixed_delta_seconds = DELTA
@@ -122,8 +133,20 @@ def carla_Town03_synchronous(request, carla_Town03):
     return instantiate_synchronous(request, carla_Town03)
 
 @pytest.fixture(scope="module")
+def carla_Town04_synchronous(request, carla_Town04):
+    return instantiate_synchronous(request, carla_Town04)
+
+@pytest.fixture(scope="module")
+def carla_Town05_synchronous(request, carla_Town05):
+    return instantiate_synchronous(request, carla_Town05)
+
+@pytest.fixture(scope="module")
 def carla_Town06_synchronous(request, carla_Town06):
     return instantiate_synchronous(request, carla_Town06)
+
+@pytest.fixture(scope="module")
+def carla_Town07_synchronous(request, carla_Town07):
+    return instantiate_synchronous(request, carla_Town07)
 
 @pytest.fixture(scope="module")
 def carla_Town10HD_synchronous(request, carla_Town10HD):

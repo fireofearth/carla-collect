@@ -19,33 +19,9 @@ from collect.generate import DataCollector
 from collect.generate import NaiveMapQuerier, SceneConfig
 from collect.generate.scene.v2_1.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
+from collect.generate.scene.trajectron_util import standardization
 
 TESTSceneBuilder=TrajectronPlusPlusSceneBuilder
-
-standardization = {
-    'VEHICLE': {
-        'position': {
-            'x': {'mean': 0, 'std': 80},
-            'y': {'mean': 0, 'std': 80}
-        },
-        'velocity': {
-            'x': {'mean': 0, 'std': 15},
-            'y': {'mean': 0, 'std': 15},
-            'norm': {'mean': 0, 'std': 15}
-        },
-        'acceleration': {
-            'x': {'mean': 0, 'std': 4},
-            'y': {'mean': 0, 'std': 4},
-            'norm': {'mean': 0, 'std': 4}
-        },
-        'heading': {
-            'x': {'mean': 0, 'std': 1},
-            'y': {'mean': 0, 'std': 1},
-            '°': {'mean': 0, 'std': np.pi},
-            'd°': {'mean': 0, 'std': 1}
-        }
-    }
-}
 
 """
 pytest --log-cli-level=INFO --capture=tee-sys -vv

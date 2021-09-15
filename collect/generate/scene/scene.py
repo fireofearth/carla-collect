@@ -113,7 +113,7 @@ class SceneBuilder(ABC):
     returns whatever it has collected using get_scene()."""
 
     Z_UPPERBOUND =  4
-    Z_LOWERBOUND = -4
+    Z_LOWERBOUND = 4
     
     def __init__(self, data_collector,
             map_reader,
@@ -231,7 +231,8 @@ class SceneBuilder(ABC):
         labels = self.__map_reader.get_actor_labels(self.__ego_vehicle)
         if self.__should_exclude_dataset_sample(labels):
             self.__remove_scene_builder()
-        player_location = carlautil.actor_to_location_ndarray(self.__ego_vehicle)
+        player_location = carlautil.to_location_ndarray(self.__ego_vehicle)
+        player_z = player_location[2]
         if len(self.__other_vehicles):
             other_ids = list(self.__other_vehicles.keys())
             other_vehicles = self.__other_vehicles.values()
@@ -258,7 +259,7 @@ class SceneBuilder(ABC):
                     'height': others_data[11],
                     'heading': others_data[13]})
             df = df[df['distances'] < self.__radius]
-            df = df[df['z'].between(self.Z_LOWERBOUND, self.Z_UPPERBOUND, inclusive=False)]
+            df = df[df['z'].between(player_z - self.Z_LOWERBOUND, player_z + self.Z_UPPERBOUND, inclusive=False)]
             del df['distances']
         else:
             df = pd.DataFrame(columns=['frame_id', 'type', 'node_id', 'robot',

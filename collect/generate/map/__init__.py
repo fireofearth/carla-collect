@@ -157,7 +157,6 @@ class MapDataExtractor(object):
                 uncontrolled=uncontrolled_junction_locations)
 
 
-
 class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
     used to query whether an actor is in a certain part
@@ -170,70 +169,13 @@ class MapQuerier(ABC):
     # used by __extract_polygons_and_lines()
     EXTRACT_PRECISION = 0.05
 
-    # TODO: is this being used? Delete?
-    # used by get_bounds_for_road_constraints()
-    # BOUNDS_PRECISION = 1.0
-
-    @staticmethod
-    def __lateral_shift(transform, shift):
-        transform.rotation.yaw += 90
-        return transform.location + shift * transform.get_forward_vector()
-
-    def __is_yellow_line(self, waypoint, shift):
-        w = self.carla_map.get_waypoint(self.__lateral_shift(waypoint.transform, shift),
-                project_to_road=False)
-        if w is None:
-            return False
-        return w.lane_id * waypoint.lane_id < 0
-
-    def __extract_polygons_and_lines(self):
-        """Extract map features (road lanes, road polygons) as 
-        """
-        road_polygons = []
-        yellow_lines  = []
-        white_lines   = []
-        topology      = [x[0] for x in self.carla_map.get_topology()]
-        topology      = sorted(topology, key=lambda w: w.transform.location.z)
-        for waypoint in topology:
-            waypoints = [waypoint]
-            nxt = waypoint.next(self.EXTRACT_PRECISION)[0]
-            while nxt.road_id == waypoint.road_id:
-                waypoints.append(nxt)
-                nxt = nxt.next(self.EXTRACT_PRECISION)[0]
-
-            left_marking  = carlautil.locations_to_ndarray(
-                    [self.__lateral_shift(w.transform, -w.lane_width * 0.5) for w in waypoints],
-                    flip_y=True)
-            right_marking = carlautil.locations_to_ndarray(
-                    [self.__lateral_shift(w.transform, w.lane_width * 0.5) for w in waypoints],
-                    flip_y=True)
-            road_polygon = np.concatenate((left_marking, np.flipud(right_marking)), axis=0)
-
-            if len(road_polygon) > 2:
-                road_polygons.append(road_polygon)
-                if not waypoint.is_intersection:
-                    sample = waypoints[int(len(waypoints) / 2)]
-                    if self.__is_yellow_line(sample, -sample.lane_width * 1.1):
-                        yellow_lines.append(left_marking)
-                    else:
-                        white_lines.append(left_marking)
-                    if self.__is_yellow_line(sample, sample.lane_width * 1.1):
-                        yellow_lines.append(right_marking)
-                    else:
-                        white_lines.append(right_marking)
-        return MapData(road_polygons, yellow_lines, white_lines)
-
     def __init__(self, carla_world, carla_map, debug=False):
         self.carla_world = carla_world
         self.carla_map = carla_map
         self._debug = debug
-        self.map_data = self.__extract_polygons_and_lines()
-
-    # TODO: what is this? Delete?
-    # def get_bounds_for_road_constraints(self, vehicle):
-    #     wp = self.carla_map.get_waypoint(vehicle.get_location())
-    #     wp.next(self.BOUNDS_PRECISION)
-    #     BOUNDS_PRECISIONl
+        self.map_data_extractor = MapDataExtractor(self.carla_world, self.carla_map)
+        self.map_data = self.map_data_extractor.extract_road_polygons_and_lines(
+                sampling_precision=self.EXTRACT_PRECISION)
 
     @property
     def map_name(self):

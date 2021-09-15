@@ -216,3 +216,49 @@ def get_road_segment_enclosure(start_wp, tol=2.0):
     start_wp_spec = np.array([s_x, s_y, start_yaw])
     bbox_spec = np.array([_LENGTH, length, r_width, l_width])
     return start_wp_spec, bbox, bbox_spec
+
+def split_line_by_mask(X, mask):
+    # split X by inclusion or exclusion
+    indices = np.where(np.diff(mask,prepend=np.nan))[0]
+    l = np.split(X, indices)[1:]
+    X_inclusion = l[::2] if mask[0] else l[1::2]
+    X_exclusion = l[::2] if not mask[0] else l[1::2]
+    return X_inclusion, X_exclusion
+
+def remove_line_segments_by_condition(cond, lines):
+    _lines = []
+    for line in lines:
+        splits, _ = split_line_by_mask(line, cond(line))
+        _lines += splits
+    return _lines
+
+def split_polygon_by_mask(X, mask):
+    # split X by inclusion or exclusion
+    indices = np.where(np.diff(mask,prepend=np.nan))[0]
+    l = np.split(X, indices)[1:]
+    X_inclusion = l[::2] if mask[0] else l[1::2]
+    X_exclusion = l[::2] if not mask[0] else l[1::2]
+    if len(X_inclusion) % 2 == 0:
+        # fold all
+        n = len(X_inclusion)
+        X_inclusion = util.map_to_list(np.concatenate, zip(X_inclusion[:n//2], X_inclusion[:n//2 - 1:-1]))
+        # take middle and fold rest
+        n = len(X_exclusion)
+        X_exclusion = util.map_to_list(np.concatenate, zip(X_exclusion[:n // 2], X_exclusion[:n // 2:-1])) \
+                + [X_exclusion[n // 2]]
+    else:
+        # take middle and fold rest
+        n = len(X_inclusion)
+        X_inclusion = util.map_to_list(np.concatenate, zip(X_inclusion[:n // 2], X_inclusion[:n // 2:-1])) \
+                + [X_inclusion[n // 2]]
+        # fold all
+        n = len(X_exclusion)
+        X_exclusion = util.map_to_list(np.concatenate, zip(X_exclusion[:n//2], X_exclusion[:n//2 - 1:-1]))
+    return X_inclusion, X_exclusion
+
+def remove_polygons_by_condition(cond, polygons):
+    _polygons = []
+    for polygon in polygons:
+        splits, _ = split_polygon_by_mask(polygon, cond(polygon))
+        _polygons += splits
+    return _polygons
