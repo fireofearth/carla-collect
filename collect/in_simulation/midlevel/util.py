@@ -167,17 +167,23 @@ def plot_h_polyhedron(ax, A, b, fc='none', ec='none', alpha=0.3):
     x, y = zip(*hs.intersections[ch.vertices])
     ax.fill(x, y, fc=fc, ec=ec, alpha=alpha)
 
-def get_ovehicle_color_set():
-    OVEHICLE_COLORS = [
-        clr.LinearSegmentedColormap.from_list('ro', ['red', 'orange'], N=256),
-        clr.LinearSegmentedColormap.from_list('gy', ['green', 'yellow'], N=256),
-        clr.LinearSegmentedColormap.from_list('bp', ['blue', 'purple'], N=256),
-        clr.LinearSegmentedColormap.from_list('td', ['turquoise', 'deeppink'], N=256),
-        clr.LinearSegmentedColormap.from_list('bt', ['brown', 'teal'], N=256),
-    ]
+OVEHICLE_COLORS = [
+    clr.LinearSegmentedColormap.from_list('ro', ['red', 'orange'], N=256),
+    clr.LinearSegmentedColormap.from_list('gy', ['green', 'yellow'], N=256),
+    clr.LinearSegmentedColormap.from_list('bp', ['blue', 'purple'], N=256),
+    clr.LinearSegmentedColormap.from_list('td', ['turquoise', 'deeppink'], N=256),
+    clr.LinearSegmentedColormap.from_list('bt', ['brown', 'teal'], N=256),
+]
+
+def get_ovehicle_color_set(latents=None):
+    latents = [] if latents is None else latents
     ovehicle_colors = []
-    for ov_colormap in OVEHICLE_COLORS:
-        ov_colors = ov_colormap(np.linspace(0,1,5))
+    for idx, ov_colormap in enumerate(OVEHICLE_COLORS):
+        try:
+            l = latents[idx]
+        except IndexError:
+            l = 5
+        ov_colors = ov_colormap(np.linspace(0,1,l))
         ovehicle_colors.append(ov_colors)
     return ovehicle_colors
 

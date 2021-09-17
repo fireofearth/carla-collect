@@ -39,8 +39,8 @@ from collect.generate import (
         DataCollector, IntersectionReader, SampleLabelFilter,
         ScenarioIntersectionLabel, ScenarioSlopeLabel)
 from collect.generate import SceneConfig
-from collect.generate.scene.v3_1.trajectron_scene import TrajectronPlusPlusSceneBuilder
-from collect.generate.scene.v3_1.trajectron_scene import print_and_reset_specs
+from collect.generate.scene.v3_2.trajectron_scene import TrajectronPlusPlusSceneBuilder
+from collect.generate.scene.v3_2.trajectron_scene import print_and_reset_specs
 from collect.generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene, make_environment)
 
@@ -87,7 +87,7 @@ class DataGenerator(object):
         #     Filter for slopes and controlled intersections
         self.exclude_filter = SampleLabelFilter(
             # intersection_type=[ScenarioIntersectionLabel.CONTROLLED],
-            slope_type=[ScenarioSlopeLabel.SLOPES]
+            # slope_type=[ScenarioSlopeLabel.SLOPES]
         )
 
     def add_scene(self, scene):

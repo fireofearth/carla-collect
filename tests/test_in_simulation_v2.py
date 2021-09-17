@@ -14,7 +14,7 @@ import utility as util
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
 # from collect.in_simulation.midlevel.v2 import MidlevelAgent
-from collect.in_simulation.midlevel.v2_1 import MidlevelAgent
+from collect.in_simulation.midlevel.v2_2 import MidlevelAgent
 from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v2_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
