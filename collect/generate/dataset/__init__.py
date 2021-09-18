@@ -35,7 +35,7 @@ class CrossValidationSplitCreator(object):
         Returns
         =======
         list of (dict of (int: list of str))
-            The splits.
+            The splits. The splits are shuffled.
         """
         n_groups = len(groups)
         splits = []
@@ -44,7 +44,7 @@ class CrossValidationSplitCreator(object):
                     0: util.merge_list_of_list([groups[idx] for idx in train]),
                     1: util.merge_list_of_list([groups[idx] for idx in val]),
                     2: util.merge_list_of_list([groups[idx] for idx in test])}
-            util.shuffle_nested_dict_of_list(groups)
+            util.shuffle_nested_dict_of_list(split)
             splits.append(split)
         return splits
 
@@ -81,6 +81,7 @@ class SampleGroupCreator(object):
         =======
         dict of int: (list of str)
             Sample IDs grouped into n_groups groups.
+            These IDs are not shuffled.
         """
         groups = { }
         for idx in range(self.n_groups):
