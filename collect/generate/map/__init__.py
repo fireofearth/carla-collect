@@ -14,6 +14,8 @@ from ..label import SampleLabelMap, SampleLabelFilter
 from ..label import SegmentationLabel
 from .road import get_road_segment_enclosure
 
+CARLA_MAP_NAMES = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
+
 class MapData(object):
     """Map data.
 
@@ -107,6 +109,12 @@ class MapDataExtractor(object):
         return pd.DataFrame({'x': wp_locations[0], 'y': wp_locations[1], 'z': wp_locations[2],
                 'pitch': wp_pitches, 'is_sloped': wp_is_sloped})
     
+    def extract_spawn_points(self):
+        spawn_points = self.carla_map.get_spawn_points()
+        return np.concatenate((
+            carlautil.to_locations_ndarray(spawn_points, flip_y=True),
+            carlautil.to_rotations_ndarray(spawn_points, flip_y=True)), axis=-1)
+
     def extract_junction_with_portals(self):
         carla_topology = self.carla_map.get_topology()
         junctions = carlautil.get_junctions_from_topology_graph(carla_topology)
