@@ -1,0 +1,8 @@
+{
+    "complete_intersection": 4,
+    "stopped_car": 1,
+    "at_intersection": 2,
+    "major_turn": 18,
+    "minor_turn": 7,
+    "other": 1
+}

@@ -1,7 +1,4 @@
-"""This is for Trajectron data wrangling
-
-TODO: refactor this class
-"""
+"""This is for Trajectron data wrangling."""
 
 import os
 import json
@@ -26,6 +23,7 @@ import utility as util
 from ..label import carla_id_maker
 from ..map import MapDataExtractor
 from ... import CACHEDIR
+
 
 def node_to_df(node):
     columns = ["_".join(t) for t in node.data.header]
@@ -63,6 +61,35 @@ def trajectory_curvature(t):
     return (path_length / path_distance) - 1, path_length, path_distance
 
 
+class FrequencyModificationConfig(dict):
+    """Values to set frequency modifier of scenes."""
+
+    def __init__(
+        self,
+        complete_intersection=4,
+        stopped_car=1,
+        at_intersection=2,
+        major_turn=18,
+        minor_turn=7,
+        other=1,
+    ):
+        super().__init__(
+            complete_intersection=complete_intersection,
+            stopped_car=stopped_car,
+            at_intersection=at_intersection,
+            major_turn=major_turn,
+            minor_turn=minor_turn,
+            other=other,
+        )
+        self.__dict__ = self
+
+    @classmethod
+    def from_file(cls, config_path):
+        with open(config_path, "r") as f:
+            config = json.load(f)
+        return cls(**config)
+
+
 class TrajectronDataToLabel(object):
     # Directory of cache
     MAP_NAMES = ["Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
@@ -83,20 +110,8 @@ class TrajectronDataToLabel(object):
                 junctions=payload["junctions"],
             )
 
-    def hardcode_set_node_frequency_multiplier(self, env):
-        """
-        Mutates environment
-
-        TODO: hardcoded. Figure out a way to do this in more flexible way?
-        """
-        fm_modification = util.AttrDict(
-            complete_intersection=4,
-            stopped_car=1,
-            at_intersection=2,
-            major_turn=18,
-            minor_turn=7,
-            other=1,
-        )
+    def set_node_frequency_multiplier(self, env, fm_modification):
+        """Mutates environment by setting the frequency modifier of scenes."""
 
         # map to scene+node ID to node in scene
         maps_ids_nodes_dict = {}
