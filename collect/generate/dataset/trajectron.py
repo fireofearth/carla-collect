@@ -137,6 +137,7 @@ class TrajectronDataToLabel(object):
         map_to_smpolys = {}
         # map to Shapely Circle covering junction region
         map_to_scircles = {}
+        logging.info("Retrieving some data from map.")
         for map_name in self.MAP_NAMES:
             for _junction in self.map_datum[map_name].junctions:
                 f = lambda x, y, yaw, l: util.vertices_from_bbox(
@@ -146,10 +147,10 @@ class TrajectronDataToLabel(object):
                     lambda wps: util.starmap(f, wps), _junction.waypoints
                 )
                 smpolys = util.map_to_list(vertex_set_to_smpoly, vertex_set)
-                util.setget_dict_from_dict(map_to_smpolys, map_name).extend(smpolys)
+                util.setget_list_from_dict(map_to_smpolys, map_name).extend(smpolys)
                 x, y = _junction.pos
                 scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
-                util.setget_dict_from_dict(map_to_scircles, map_name).append(scircle)
+                util.setget_list_from_dict(map_to_scircles, map_name).append(scircle)
 
         logging.info("Labelling node data.")
         counts = util.AttrDict(
