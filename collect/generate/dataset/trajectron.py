@@ -99,6 +99,7 @@ class TrajectronDataToLabel(object):
 
     def __init__(self, config):
         self.config = config
+        self.map_datum = { }
         for map_name in self.MAP_NAMES:
             cachepath = f"{CACHEDIR}/map_data.{map_name}.pkl"
             with open(cachepath, "rb") as f:
@@ -120,7 +121,7 @@ class TrajectronDataToLabel(object):
         logging.info("Getting trajectories of vehicles from every scene.")
         for scene in tqdm(env.scenes):
             for node in scene.nodes:
-                map_name = carla_id_maker.extract_value(scene.name, "map_name")
+                map_name = carla_id_maker.extract_value(scene.name, "map")
                 scene_node_id = scene.name + "/" + node.id
                 util.setget_dict_from_dict(maps_ids_nodes_dict, map_name)[
                     scene_node_id
