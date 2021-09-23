@@ -113,6 +113,7 @@ class TrajectronDataToLabel(object):
     def set_node_frequency_multiplier(self, env, fm_modification):
         """Mutates environment by setting the frequency modifier of scenes."""
 
+        n_nodes = 0
         # map to scene+node ID to node in scene
         maps_ids_nodes_dict = {}
         # map to scene+node ID to node Shapely LineString
@@ -130,6 +131,7 @@ class TrajectronDataToLabel(object):
                 pos += np.array([scene.x_min, scene.y_min])
                 sls = shapely.geometry.LineString(pos)
                 ids_sls_dict[scene_node_id] = sls
+                n_nodes += 1
 
         # collect shapes of all the intersections
         # map to Shapely MultiPolygon for junction entrance/exits
@@ -162,7 +164,7 @@ class TrajectronDataToLabel(object):
             other=0,
         )
 
-        with tqdm(total=len(env.scenes)) as pbar:
+        with tqdm(total=n_nodes) as pbar:
             for map_name, ids_nodes_dict in maps_ids_nodes_dict.items():
                 for scene_node_id, node in ids_nodes_dict.items():
                     is_at_intersection = False
