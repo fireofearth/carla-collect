@@ -99,6 +99,7 @@ class TrajectronDataToLabel(object):
 
     def __init__(self, config):
         self.config = config
+        self.map_datum = { }
         for map_name in self.MAP_NAMES:
             cachepath = f"{CACHEDIR}/map_data.{map_name}.pkl"
             with open(cachepath, "rb") as f:
