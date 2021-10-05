@@ -48,7 +48,8 @@ except ModuleNotFoundError as e:
 
 from ..util import (get_vertices_from_center, profile,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
-        plot_lcss_prediction, get_vertices_from_centers)
+        plot_lcss_prediction, get_vertices_from_centers,
+        plot_oa_simulation)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...lowlevel import LocalPlanner
@@ -136,7 +137,14 @@ class MidlevelAgent(AbstractDataCollector):
             prediction_horizon=8,
             n_predictions=100,
             scene_builder_cls=TrajectronPlusPlusSceneBuilder,
-            scene_config=OnlineConfig()):
+            scene_config=OnlineConfig(),
+            log_cplex=False,
+            plot_scenario=False,
+            plot_simulation=False,
+            plot_boundary=False,
+            plot_vertices=False,
+            plot_overapprox=False,
+            **kwargs):
         assert control_horizon <= prediction_horizon
         self.__ego_vehicle = ego_vehicle
         self.__map_reader = map_reader
@@ -192,7 +200,20 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__road_seg_starting[2]) # need to flip about x-axis
         self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
         self.U_warmstarting = None
-        
+
+        self.log_cplex       = log_cplex
+        self.plot_scenario   = plot_scenario
+        self.plot_simulation = plot_simulation
+        self.plot_boundary   = plot_boundary
+        self.plot_vertices   = plot_vertices
+        self.plot_overapprox = plot_overapprox
+
+        if self.plot_simulation:
+            self.__plot_simulation_data = util.AttrDict(
+                actual_trajectory=collections.OrderedDict(),
+                planned_trajectories=collections.OrderedDict(),
+                planned_controls=collections.OrderedDict()
+            )
     
     def get_vehicle_state(self):
         """Get the vehicle state as an ndarray. State consists of
@@ -221,10 +242,25 @@ class MidlevelAgent(AbstractDataCollector):
     def sensor_is_listening(self):
         return self.__sensor.is_listening
 
+    def __plot_simulation(self):
+        if len(self.__plot_simulation_data.planned_trajectories) == 0:
+            return
+        filename = f"agent{self.__ego_vehicle.id}_oa_simulation"
+        lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
+        plot_oa_simulation(
+            self.__scene_builder.get_scene(),
+            self.__plot_simulation_data.actual_trajectory,
+            self.__plot_simulation_data.planned_trajectories,
+            self.__plot_simulation_data.planned_controls,
+            [lon, lat],
+            filename=filename)
+
     def destroy(self):
         """Release all the CARLA resources used by this collector."""
         self.__sensor.destroy()
         self.__sensor = None
+        if self.plot_simulation:
+            self.__plot_simulation()
 
     def do_prediction(self, frame):
         """Get processed scene object from scene builder, input the scene to a model to
@@ -301,11 +337,36 @@ class MidlevelAgent(AbstractDataCollector):
         # x0 : np.array
         #   Initial state
         x0 = np.array([p_0_x, p_0_y, v_0_x, v_0_y])
+        params.x0 = x0
         A, T = self.__params.A, self.__params.T
         # States_free_init has shape (nx*(T+1))
         params.States_free_init = np.concatenate([
                 np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
         return params
+
+    def __plot_boundary(self):
+        fig, axes = plt.subplots(1, 2, figsize=(10,6))
+        axes = axes.ravel()
+        ego_x, ego_y, _ = carlautil.to_location_ndarray(self.__ego_vehicle)
+        ego_y = -ego_y
+        wp_x, wp_y = self.__road_seg_starting[:2]
+        axes[0].plot(ego_x, ego_y, 'g*')
+        axes[0].plot(wp_x, wp_y, 'b*')
+        patch = patches.Polygon(self.__road_seg_enclosure, ec='b', fc='none')
+        axes[0].add_patch(patch)
+        axes[0].set_aspect('equal')
+        b_length, f_length, r_width, l_width = self.__road_seg_params
+        mtx = util.rotation_2d(self.__road_seg_starting[2])
+        shift = self.__road_seg_starting[:2]
+        ego_x, ego_y = mtx @ (np.array([ego_x, ego_y]) - shift)
+        axes[1].plot(ego_x, ego_y, 'g*')
+        axes[1].plot([0, -b_length], [0, 0], '-bo')
+        axes[1].plot([0,  f_length], [0, 0], '-bo')
+        axes[1].plot([0,0], [0, -r_width], '-bo')
+        axes[1].plot([0,0], [0,  l_width], '-bo')
+        axes[1].set_aspect('equal')
+        fig.tight_layout()
+        plt.show()
 
     def compute_boundary_constraints(self, p_x, p_y):
         """
@@ -318,27 +379,8 @@ class MidlevelAgent(AbstractDataCollector):
         mtx = util.rotation_2d(self.__road_seg_starting[2])
         shift = self.__road_seg_starting[:2]
 
-        plot_bbox_constraints = False
-        if plot_bbox_constraints:
-            fig, axes = plt.subplots(1, 2, figsize=(10,6))
-            axes = axes.ravel()
-            ego_x, ego_y, _ = carlautil.to_location_ndarray(self.__ego_vehicle)
-            ego_y = -ego_y
-            wp_x, wp_y = self.__road_seg_starting[:2]
-            axes[0].plot(ego_x, ego_y, 'g*')
-            axes[0].plot(wp_x, wp_y, 'b*')
-            patch = patches.Polygon(self.__road_seg_enclosure, ec='b', fc='none')
-            axes[0].add_patch(patch)
-            axes[0].set_aspect('equal')
-            ego_x, ego_y = mtx @ (np.array([ego_x, ego_y]) - shift)
-            axes[1].plot(ego_x, ego_y, 'g*')
-            axes[1].plot([0, -b_length], [0, 0], '-bo')
-            axes[1].plot([0,  f_length], [0, 0], '-bo')
-            axes[1].plot([0,0], [0, -r_width], '-bo')
-            axes[1].plot([0,0], [0,  l_width], '-bo')
-            axes[1].set_aspect('equal')
-            fig.tight_layout()
-            plt.show()
+        if self.plot_boundary:
+            self.__plot_boundary()
 
         pos = np.stack([p_x, p_y], axis=1)
         pos = util.obj_matmul((pos - shift), mtx.T)
@@ -455,8 +497,7 @@ class MidlevelAgent(AbstractDataCollector):
                     vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
                             ps, yaws, ovehicle.bbox)
 
-        plot_vertices = True
-        if plot_vertices: self.__plot_vertices(ovehicles, vertices)
+        if self.plot_vertices: self.__plot_vertices(ovehicles, vertices)
         return vertices
     
     def __plot_overapproximations(self, ovehicles, vertices, A_union, b_union):
@@ -522,8 +563,7 @@ class MidlevelAgent(AbstractDataCollector):
                     b_union[t][latent_idx][ov_idx] = b_union_k
         
         """Plot the overapproximation"""
-        plot_overapprox = True
-        if plot_overapprox:
+        if self.plot_overapprox:
             self.__plot_overapproximations(ovehicles, vertices, A_union, b_union)
         return A_union, b_union
 
@@ -569,7 +609,7 @@ class MidlevelAgent(AbstractDataCollector):
                     model.add_constraints([l >= r for (l,r) in zip(lhs, rhs)])
                     model.add_constraint(np.sum(Delta[indices, t]) >= 1)
         
-        # start from current vehicle position and minimize the objective
+        """Start from current vehicle position and minimize the objective"""
         p_x, p_y, _ = carlautil.actor_to_location_ndarray(
                 self.__ego_vehicle, flip_y=True)
         if self.__goal.is_relative:
@@ -580,7 +620,7 @@ class MidlevelAgent(AbstractDataCollector):
         goal = np.array([goal_x, goal_y])
         cost = (X[-1, 0] - goal_x)**2 + (X[-1, 1] - goal_y)**2
         model.minimize(cost)
-        if self.U_warmstarting:
+        if self.U_warmstarting is not None:
             # Warm start inputs if past iteration was run.
             warm_start = model.new_solution()
             for i, u in enumerate(self.U_warmstarting[self.__control_horizon:]):
@@ -593,8 +633,7 @@ class MidlevelAgent(AbstractDataCollector):
 
         # model.print_information()
         # model.parameters.read.datacheck = 1
-        should_log_cplex = True
-        if should_log_cplex:
+        if self.log_cplex:
             model.parameters.mip.display = 2
             s = model.solve(log_output=True)
         else:
@@ -635,8 +674,7 @@ class MidlevelAgent(AbstractDataCollector):
             transform = carla.Transform(carla.Location(x=x, y=y),carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = False
-        if plot_scenario:
+        if self.plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
             ctrl_result.headings = headings
@@ -645,10 +683,16 @@ class MidlevelAgent(AbstractDataCollector):
             params.update(self.__params)
             plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
                     self.__prediction_horizon, ego_bbox, filename=filename)
-
+        if self.plot_simulation:
+            """Save planned trajectory for final plotting"""
+            self.__plot_simulation_data.planned_trajectories[frame] = np.concatenate(
+                    (params.x0[None], ctrl_result.X_star))
+            self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
         return trajectory
 
     def do_first_step(self, frame):
+        """Set the first frame and instantiate the online
+        scene builder to collect environment data."""
         self.__first_frame = frame
         self.__scene_builder = self.__scene_builder_cls(
             self,
@@ -662,11 +706,15 @@ class MidlevelAgent(AbstractDataCollector):
             debug=True)
 
     def run_step(self, frame, control=None):
-        """
+        """Run motion planner step. Should be called whenever carla.World.click() is called.
+
         Parameters
         ==========
         frame : int
+            Current frame of the simulation.
         control: carla.VehicleControl (optional)
+            Optional control to apply to the motion planner. Used to move the vehicle
+            while burning frames in the simulator before doing motion planning.
         """
         logging.debug(f"In LCSSHighLevelAgent.run_step() with frame = {frame}")
         if self.__first_frame is None:
@@ -674,6 +722,8 @@ class MidlevelAgent(AbstractDataCollector):
         
         self.__scene_builder.capture_trajectory(frame)
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
+            """We only motion plan every `record_interval` frames
+            (e.g. every 0.5 seconds of simulation)."""
             frame_id = int((frame - self.__first_frame) / self.__scene_config.record_interval)
             if frame_id < self.__n_burn_interval:
                 """Initially collect data without doing any control to the vehicle."""
@@ -681,10 +731,15 @@ class MidlevelAgent(AbstractDataCollector):
             elif (frame_id - self.__n_burn_interval) % self.__control_horizon == 0:
                 trajectory = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(trajectory, self.__scene_config.record_interval)
+            if self.plot_simulation:
+                """Save actual trajectory for final plotting"""
+                payload = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle, flip_y=True)
+                self.__plot_simulation_data.actual_trajectory[frame] = payload
 
         if not control:
             control = self.__local_planner.run_step()
         self.__ego_vehicle.apply_control(control)
+
 
     def remove_scene_builder(self, first_frame):
         raise Exception(f"Can't remove scene builder from {util.classname(first_frame)}.")

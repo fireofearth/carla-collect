@@ -46,7 +46,7 @@ CONTROLS_intersection_1 = [
 GOAL_intersection_1 = util.AttrDict(
         x=-78.12, y=95.03+80, is_relative=False)
 SCENARIO_intersection_1 = pytest.param(
-    # ego_spawn_idx,other_spawn_ids,n_burn_interval,controls,goal
+    # ego_spawn_idx,other_spawn_ids,n_burn_interval,run_interval,controls,goal
     56, [241], 35, 15, CONTROLS_intersection_1, GOAL_intersection_1,
     id='intersection_1'
 )

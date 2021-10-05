@@ -15,10 +15,6 @@ import weakref
 import copy
 import numbers
 
-# Profiling libraries
-import functools
-import cProfile, pstats, io
-
 # PyPI libraries
 import numpy as np
 import scipy.spatial
@@ -33,9 +29,9 @@ import control
 import control.matlab
 import docplex.mp
 import docplex.mp.model
-import carla
 
 # Local libraries
+import carla
 import utility as util
 import carlautil
 import carlautil.debug
@@ -136,7 +132,14 @@ class MidlevelAgent(AbstractDataCollector):
             n_predictions=100,
             n_coincide=6,
             scene_builder_cls=TrajectronPlusPlusSceneBuilder,
-            scene_config=OnlineConfig()):
+            scene_config=OnlineConfig(),
+            log_cplex=False,
+            log_agent=False,
+            plot_scenario=False,
+            plot_boundary=False,
+            plot_vertices=False,
+            plot_overapprox=False,
+            **kwargs):
         assert control_horizon <= prediction_horizon
         assert n_coincide <= control_horizon
         self.__ego_vehicle = ego_vehicle
@@ -193,6 +196,12 @@ class MidlevelAgent(AbstractDataCollector):
         self.__road_seg_starting[2] = util.reflect_radians_about_x_axis(
                 self.__road_seg_starting[2]) # need to flip about x-axis
         self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
+        self.log_cplex = log_cplex
+        self.log_agent = log_agent
+        self.plot_scenario = plot_scenario
+        self.plot_boundary = plot_boundary
+        self.plot_vertices = plot_vertices
+        self.plot_overapprox = plot_overapprox
     
     def get_vehicle_state(self):
         """Get the vehicle state as an ndarray. State consists of
@@ -296,7 +305,7 @@ class MidlevelAgent(AbstractDataCollector):
         # N_traj - number of planned trajectories to compute
         params.N_traj = np.prod(params.K)
 
-        p_0_x, p_0_y, _ = carlautil.actor_to_location_ndarray(
+        p_0_x, p_0_y, _ = carlautil.to_location_ndarray(
                 self.__ego_vehicle, flip_y=True)
         v_0_x, v_0_y, _ = carlautil.actor_to_velocity_ndarray(
                 self.__ego_vehicle, flip_y=True)
@@ -308,6 +317,30 @@ class MidlevelAgent(AbstractDataCollector):
         params.States_free_init = np.concatenate([
                 np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
         return params
+
+    def __plot_boundary(self):
+        fig, axes = plt.subplots(1, 2, figsize=(10,6))
+        axes = axes.ravel()
+        ego_x, ego_y, _ = carlautil.to_location_ndarray(self.__ego_vehicle)
+        ego_y = -ego_y
+        wp_x, wp_y = self.__road_seg_starting[:2]
+        axes[0].plot(ego_x, ego_y, 'g*')
+        axes[0].plot(wp_x, wp_y, 'b*')
+        patch = patches.Polygon(self.__road_seg_enclosure, ec='b', fc='none')
+        axes[0].add_patch(patch)
+        axes[0].set_aspect('equal')
+        b_length, f_length, r_width, l_width = self.__road_seg_params
+        mtx = util.rotation_2d(self.__road_seg_starting[2])
+        shift = self.__road_seg_starting[:2]
+        ego_x, ego_y = mtx @ (np.array([ego_x, ego_y]) - shift)
+        axes[1].plot(ego_x, ego_y, 'g*')
+        axes[1].plot([0, -b_length], [0, 0], '-bo')
+        axes[1].plot([0,  f_length], [0, 0], '-bo')
+        axes[1].plot([0,0], [0, -r_width], '-bo')
+        axes[1].plot([0,0], [0,  l_width], '-bo')
+        axes[1].set_aspect('equal')
+        fig.tight_layout()
+        plt.show()
 
     def compute_boundary_constraints(self, p_x, p_y):
         """
@@ -324,27 +357,8 @@ class MidlevelAgent(AbstractDataCollector):
         mtx = util.rotation_2d(self.__road_seg_starting[2])
         shift = self.__road_seg_starting[:2]
 
-        plot_bbox_constraints = False
-        if plot_bbox_constraints:
-            fig, axes = plt.subplots(1, 2, figsize=(10,6))
-            axes = axes.ravel()
-            ego_x, ego_y, _ = carlautil.to_location_ndarray(self.__ego_vehicle)
-            ego_y = -ego_y
-            wp_x, wp_y = self.__road_seg_starting[:2]
-            axes[0].plot(ego_x, ego_y, 'g*')
-            axes[0].plot(wp_x, wp_y, 'b*')
-            patch = patches.Polygon(self.__road_seg_enclosure, ec='b', fc='none')
-            axes[0].add_patch(patch)
-            axes[0].set_aspect('equal')
-            ego_x, ego_y = mtx @ (np.array([ego_x, ego_y]) - shift)
-            axes[1].plot(ego_x, ego_y, 'g*')
-            axes[1].plot([0, -b_length], [0, 0], '-bo')
-            axes[1].plot([0,  f_length], [0, 0], '-bo')
-            axes[1].plot([0,0], [0, -r_width], '-bo')
-            axes[1].plot([0,0], [0,  l_width], '-bo')
-            axes[1].set_aspect('equal')
-            fig.tight_layout()
-            plt.show()
+        if self.plot_boundary:
+            self.__plot_boundary()
 
         pos = np.stack([p_x, p_y], axis=1)
         pos = util.obj_matmul((pos - shift), mtx.T)
@@ -523,7 +537,7 @@ class MidlevelAgent(AbstractDataCollector):
                 model.add_constraints([l == r for (l,r) in zip(x1, x2)])
 
         # start from current vehicle position and minimize the objective
-        p_x, p_y, _ = carlautil.actor_to_location_ndarray(
+        p_x, p_y, _ = carlautil.to_location_ndarray(
                 self.__ego_vehicle, flip_y=True)
         if self.__goal.is_relative:
             goal_x, goal_y = p_x + self.__goal.x, p_y + self.__goal.y
@@ -534,8 +548,7 @@ class MidlevelAgent(AbstractDataCollector):
         cost = np.sum((X[:,-1,:2] - goal)**2)
         model.minimize(cost)
         # model.print_information()
-        should_log_cplex = True
-        if should_log_cplex:
+        if self.log_cplex:
             model.parameters.mip.display = 5
             s = model.solve(log_output=True)
         else:
@@ -557,7 +570,7 @@ class MidlevelAgent(AbstractDataCollector):
         ovehicles = self.make_ovehicles(pred_result)
         params = self.make_local_params(ovehicles)
         ctrl_result = self.do_highlevel_control(params, ovehicles)
-
+            
         """Get trajectory"""
         # X has shape (T+1, nx)
         X = np.concatenate((ctrl_result.start[None], ctrl_result.X_star[0, :, :2]))
@@ -573,8 +586,10 @@ class MidlevelAgent(AbstractDataCollector):
                     carla.Rotation(yaw=yaw))
             trajectory.append(transform)
 
-        plot_scenario = True
-        if plot_scenario:
+        if self.log_agent:
+            logging.info(f"Optimized {params.N_traj} trajectories avoiding {params.O} vehicles.")
+
+        if self.plot_scenario:
             """Plot scenario"""
             filename = f"agent{self.__ego_vehicle.id}_frame{frame}_lcss_control"
             lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)

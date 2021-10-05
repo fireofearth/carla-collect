@@ -2,16 +2,21 @@
 """
 
 import collections
-
+import functools
 import numpy as np
+import scipy
+import scipy.interpolate
 
 import carla
 import utility as util
+import utility.npu
+import utility.npu
 import carlautil
+
 
 PRECISION = 1.0
 
-def to_point(wp):
+def to_point(wp, flip_x=False, flip_y=False):
     """Convert waypoint to a 2D point.
 
     Parameters
@@ -22,7 +27,7 @@ def to_point(wp):
     =======
     list of float
     """
-    x, y, _ = carlautil.to_location_ndarray(wp)
+    x, y, _ = carlautil.to_location_ndarray(wp, flip_x=flip_x, flip_y=flip_y)
     return [x, y]
 
 def get_adjacent_waypoints(start_wp):
@@ -262,3 +267,107 @@ def remove_polygons_by_condition(cond, polygons):
         splits, _ = split_polygon_by_mask(polygon, cond(polygon))
         _polygons += splits
     return _polygons
+
+######################################################################
+# Create fixed size covering polytopes over a path on the road network
+######################################################################
+
+def compute_segment_length(delta, k):
+    return 2*np.arccos(1/(k*delta + 1))/k
+
+def collect_points_along_path(start_wp, choices, max_distance,
+        flip_x=False, flip_y=False):
+    """Collects points along path, beginning with provided waypoint."""
+    _to_point = functools.partial(to_point, flip_x=flip_x, flip_y=flip_y)
+    wp = start_wp
+    points = [_to_point(wp)]
+    cum_distance = 0.
+    iidx = 0
+    while cum_distance < max_distance:
+        next_wps = wp.next(PRECISION)
+        if len(next_wps) > 1:
+            try:
+                wp = next_wps[choices[iidx]]
+            except IndexError:
+                wp = next_wps[0]
+            iidx += 1
+        else:
+            wp = next_wps[0]
+        points.append(_to_point(wp))
+        x1, y1 = points[-2]
+        x2, y2 = points[-1]
+        cum_distance += np.sqrt((x1 - x2)**2 + (y1 - y2)**2)
+    return np.array(points)
+                
+def cover_along_waypoints_fixedsize(start_wp, choices, max_distance, lane_width,
+        flip_x=False, flip_y=False):
+    """Compute covering polytopes over a path on the road network.
+
+    Parameters
+    ==========
+    start_wp : carla.Waypoint
+        Starting waypoint of the path on the road network.
+    choices : list of int
+        The indices of the turns to make when reaching a fork on the road network.
+        `choices[0]` is the index of the first turn, `choices[1]` is the index of the second turn, etc.
+    max_distance : float
+        The max distance of the path starting from `start_wp`. Use to specify length of path.
+    lane_width : float
+        The width of the road.
+
+    Returns
+    =======
+    util.AttrDict
+        The data of the covering poytopes.
+        - polytopes : list of ndarray polytopes with H-representation (A, b)
+                      where points Ax <= b iff x is in the polytope.
+        - distances : ndarray of distances along the spline to follow from nearest
+                      endpoint before encountering corresponding covering polytope
+                      in index.
+        - positions : ndarray of 2D positions of center of the covering polytope
+                      in index.
+    """
+    points = collect_points_along_path(start_wp, choices,
+            max_distance, flip_x=flip_x, flip_y=flip_y)
+    
+    # fit a spline and get the 1st and 2nd spline derivatives
+    distances = util.npu.cumulative_points_distances(points)
+    distances = np.insert(distances, 0, 0)
+    L = distances[-1]
+    spline = scipy.interpolate.CubicSpline(distances, points, axis=0)
+    dspline = spline.derivative(1)
+    ddspline = spline.derivative(2)
+
+    # compute approx. max curvature
+    distances = np.linspace(0, L, 10)
+    max_k = np.max(np.linalg.norm(ddspline(distances), axis=1))
+
+    # compute the vertices of road covers
+    half_lane_width = 0.55*lane_width
+    segment_length = min(10, compute_segment_length(0.25, max_k))
+    n = int(np.round(L / segment_length))
+    distances = np.linspace(0, L, n)
+    l = util.pairwise(zip(spline(distances), dspline(distances), ddspline(distances)))
+    polytopes = []
+    vertex_set = []
+    for (X1, dX1, ddX1), (X2, dX2, ddX2) in l:
+        sgn1 = np.sign(dX1[0]*ddX1[1] - dX1[1]*ddX1[0])
+        sgn2 = np.sign(dX2[0]*ddX2[1] - dX2[1]*ddX2[0])
+        tangent1 = ddX1 / np.linalg.norm(ddX1)
+        tangent2 = ddX2 / np.linalg.norm(ddX2)
+        p1 = X1 + half_lane_width*sgn1*tangent1
+        p2 = X2 + half_lane_width*sgn2*tangent2
+        p3 = X2 - half_lane_width*sgn2*tangent2
+        p4 = X1 - half_lane_width*sgn1*tangent1
+        vertices = np.stack((p1, p2, p3, p4))
+        A, b = util.npu.vertices_to_halfspace_representation(vertices)
+        polytopes.append((A, b))
+        vertex_set.append(vertices)
+    return util.AttrDict(
+        spline=spline,
+        max_k=max_k,
+        segment_length=segment_length,
+        polytopes=polytopes,
+        distances=distances,
+        positions=np.mean(np.stack(vertex_set), axis=1)
+    )

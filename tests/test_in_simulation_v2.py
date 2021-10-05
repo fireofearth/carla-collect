@@ -13,7 +13,6 @@ import utility as util
 
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-# from collect.in_simulation.midlevel.v2 import MidlevelAgent
 from collect.in_simulation.midlevel.v2_2 import MidlevelAgent
 from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v2_2.trajectron_scene import (
@@ -27,7 +26,7 @@ pytest --collect-only
 
 To run tests call
 pytest --log-cli-level=INFO --capture=tee-sys
-To run one test call e.gl
+To run one test call e.g.
 pytest --log-cli-level=INFO --capture=tee-sys tests/test_in_simulation_v2.py.py::test_Town03_scenario[ovehicle_turn]
 """
 
@@ -193,7 +192,9 @@ def scenario(scenario_params, variables, eval_env, eval_stg):
                 prediction_horizon=prediction_horizon,
                 n_predictions=n_predictions,
                 scene_builder_cls=TrajectronPlusPlusSceneBuilder,
-                scene_config=online_config)
+                scene_config=online_config,
+                plot_scenario=True,
+                plot_simulation=True)
         agent.start_sensor()
         assert agent.sensor_is_listening
         if goal:

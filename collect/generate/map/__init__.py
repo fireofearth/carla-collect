@@ -12,12 +12,14 @@ import carlautil.debug
 from ..label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
 from ..label import SampleLabelMap, SampleLabelFilter
 from ..label import SegmentationLabel
-from .road import get_road_segment_enclosure
+from .road import get_road_segment_enclosure, cover_along_waypoints_fixedsize
+from ...visualize.trajectron import render_entire_map, render_map_crop
 
 CARLA_MAP_NAMES = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
 
 class MapData(object):
     """Map data.
+    TODO: DEPRECATED
 
     Attributes
     ==========
@@ -215,9 +217,46 @@ class MapQuerier(ABC):
                 slope_pitch=slope_pitch)
     
     def road_segment_enclosure_from_actor(self, actor, tol=2.0):
+        """Get box enclosure from straight road.
+        
+        TODO: data should be fliped about x-axis
+        """
         t = actor.get_transform()
         wp = self.carla_map.get_waypoint(t.location)
         return get_road_segment_enclosure(wp, tol=tol)
+    
+    def curved_road_segments_enclosure_from_actor(self, actor, max_distance, choices=[],
+            flip_x=False, flip_y=False):
+        """Get segmented enclosure from curved road.
+
+        Parameters
+        ==========
+        max_distance : float
+            The max distance of the path starting from `start_wp`. Use to specify length of path.
+        choices : list of int
+            The indices of the turns to make when reaching a fork on the road network.
+            `choices[0]` is the index of the first turn, `choices[1]` is the index of the second turn, etc.
+        """
+        t = actor.get_transform()
+        wp = self.carla_map.get_waypoint(t.location)
+        wp = wp.previous(5)[0]
+        lane_width = wp.lane_width
+        return cover_along_waypoints_fixedsize(wp, choices, max_distance + 7, lane_width,
+                flip_x=flip_x, flip_y=flip_y)
+
+    def render_map(self, ax, extent=None):
+        """Render the map.
+
+        Parameters
+        ==========
+        extent : tuple of int
+            The extent of the map to render of form (x_min, x_max, y_min, y_max) in meters.
+            If not passed, then render entire map.
+        """
+        if extent is None:
+            render_entire_map(ax, self.map_data)
+        else:
+            render_map_crop(ax, self.map_data, extent)
 
 
 class NaiveMapQuerier(MapQuerier):
