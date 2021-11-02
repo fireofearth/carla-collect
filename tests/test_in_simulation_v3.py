@@ -18,7 +18,7 @@ from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v2_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 
-"""Test the v3 midlevel controller
+"""Test the v3 midlevel controller in open loop.
 
 To collect test names call
 (broken: starts another instance of CARLA?)

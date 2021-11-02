@@ -1,9 +1,10 @@
 """
-v5 is a modification of v2_2 that does original approach on curved road boundaries
+v5 modifies v2_2 (original approach), v3 (MCC), v4 (RMCC) for curved boundaries.
 
-    - A modification of original approach in v2_2
     - Still uses double integrator as model for ego vehicle.
     - Applies curved road boundaries using segmented polytopes.
+
+MCC, RMCC are not finished.
 """
 
 # Built-in libraries
@@ -44,7 +45,7 @@ except ModuleNotFoundError as e:
 from ..util import (get_vertices_from_center, profile,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
         plot_multiple_coinciding_controls, get_vertices_from_centers,
-        plot_lcss_prediction, plot_oa_simulation)
+        plot_lcss_prediction, plot_oa_simulation, plot_multiple_simulation)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...lowlevel.v1_1 import LocalPlanner
@@ -173,12 +174,9 @@ class MidlevelAgent(AbstractDataCollector):
 
         if agent_type == "oa":
             assert control_horizon <= prediction_horizon
-            # assert n_coincide <= control_horizon
-            pass
-        elif agent_type == "mcc":
-            raise NotImplementedError(f"Agent type {agent_type} not implemented.")
-        elif agent_type == "rmcc":
-            raise NotImplementedError(f"Agent type {agent_type} not implemented.")
+        elif agent_type == "mcc" or agent_type == "rmcc":
+            assert n_coincide <= prediction_horizon
+            assert control_horizon <= n_coincide
         else:
             raise ValueError(f"Agent type {agent_type} is not recognized.")
         self.__agent_type = agent_type
@@ -320,6 +318,19 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__control_horizon,
                 filename=filename
             )
+        elif self.__agent_type == "mcc":
+            filename = f"agent{self.__ego_vehicle.id}_mcc_simulation"
+            lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
+            plot_multiple_simulation(
+                self.__scene_builder.get_scene(),
+                self.__plot_simulation_data.actual_trajectory,
+                self.__plot_simulation_data.planned_trajectories,
+                self.__plot_simulation_data.planned_controls,
+                self.__road_segs,
+                [lon, lat],
+                self.__control_horizon,
+                filename=filename
+            )
         else:
             raise NotImplementedError()
 
@@ -451,8 +462,6 @@ class MidlevelAgent(AbstractDataCollector):
         n_segs = len(self.__road_segs.polytopes)
         segment_length = self.__road_segs.segment_length
         v_lim = self.__ego_vehicle.get_speed_limit()
-        # TODO: use __prediction_horizon, not __control_horizon
-        # TODO: use __prediction_timestep, not 0.5
         go_forward = int(
             (0.75 * v_lim*self.__prediction_timestep*self.__prediction_horizon) \
                 // segment_length + 1
@@ -559,21 +568,23 @@ class MidlevelAgent(AbstractDataCollector):
         =======
         ndarray
             Case 1 agent type is oa:
-                TODO:
+                Collection of A matrices of shape (T, max(K), O, L, 2).
+                Where max(K) largest set of cluster.
             Case 2 agent type is (r)mcc:
                 Collection of A matrices of shape (N_traj, T, O, L, 2).
                 Axis 2 (zero-based) is sorted by ovehicle.
         ndarray
             Case 1 agent type is oa:
-                TODO:
+                Collection of b vectors of shape (T, max(K), O, L).
+                Where max(K) largest set of cluster.
             Case 2 agent type is (r)mcc:
                 Collection of b vectors of shape (N_traj, T, O, L).
                 Axis 2 (zero-based) is sorted by ovehicle.
         """
         if self.__agent_type == "oa":
-            T, K, n_ov = self.__params.T, params.K, params.O
-            A_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
-            b_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
+            T, K, O = self.__params.T, params.K, params.O
+            A_union = np.empty((T, np.max(K), O,), dtype=object).tolist()
+            b_union = np.empty((T, np.max(K), O,), dtype=object).tolist()
             for ov_idx, ovehicle in enumerate(ovehicles):
                 for latent_idx in range(ovehicle.n_states):
                     for t in range(T):
@@ -613,20 +624,95 @@ class MidlevelAgent(AbstractDataCollector):
         """
         vertices = self.__compute_vertices(params, ovehicles)
         A_unions, b_unions = self.__compute_overapproximations(vertices, params, ovehicles)
+        segs_polytopes, goal = self.compute_segs_polytopes_and_goal(params)
         
-        """Apply motion planning problem"""
+        """Optimize all trajectories if MCC, else partial trajectories."""
         # params.N_select params.N_traj params.subtraj_indices
-        N_select, L, T, K, O, Gamma, nu, nx = params.N_traj, self.__params.L, self.__params.T, \
+        N_select = params.N_select if self.__agent_type == "rmcc" else params.N_traj
+
+        """Common to MCC+RMCC: setup CPLEX variables"""
+        L, T, K, O, Gamma, nu, nx = self.__params.L, self.__params.T, \
                 params.K, params.O, self.__params.Gamma, self.__params.nu, self.__params.nx
+        n_segs = len(segs_polytopes)
         u_max = self.__params.u_max
         model = docplex.mp.model.Model(name='obstacle_avoidance')
         # set up controls variables for each trajectory
         u = np.array(model.continuous_var_list(N_select*T*nu, lb=-u_max, ub=u_max, name='control'))
         Delta = np.array(model.binary_var_list(O*L*N_select*T, name='delta')).reshape(N_select, T, O, L)
+        Omicron = np.array(model.binary_var_list(N_select*n_segs*T, name="omicron"),
+                dtype=object).reshape(N_select, n_segs, T)
 
-        raise NotImplementedError()
+        """Common to MCC+RMCC: compute state from input variables"""
+        # U has shape (N_select, T*nu)
+        U = u.reshape(N_select, -1)
+        # Gamma has shape (nx*(T + 1), nu*T) so X has shape (N_select, nx*(T + 1))
+        X = util.obj_matmul(U, Gamma.T)
+        # X, U have shapes (N_select, T, nx) and (N_select, T, nu) resp.
+        X = (X + params.States_free_init).reshape(N_select, -1, nx)[..., 1:, :]
+        U = U.reshape(N_select, -1, nu)
 
-    def do_highlevel_control(self, params, ovehicles):
+        """Common to MCC+RMCC: apply dynamics constraints to trajectories"""
+        for _U, _X in zip(U, X):
+            # _X, _U have shapes (T, nx) and (T, nu) resp.
+            v_x, v_y = _X[..., 2], _X[..., 3]
+            u_x, u_y = _U[..., 0], _U[..., 1]
+            model.add_constraints(self.compute_velocity_constraints(v_x, v_y))
+            model.add_constraints(self.compute_acceleration_constraints(u_x, u_y))
+
+        """Common to MCC+RMCC: apply road boundaries constraints to trajectories"""
+        M_big, T, diag = self.__params.M_big, self.__params.T, self.__params.diag
+        for n in range(N_select):
+            # for each trajectory
+            for t in range(T):
+                for seg_idx, (A, b) in enumerate(segs_polytopes):
+                    lhs = util.obj_matmul(A, X[n,t,:2]) - np.array(M_big*(1 - Omicron[n,seg_idx,t]))
+                    rhs = b + diag
+                    model.add_constraints(
+                            [l <= r for (l,r) in zip(lhs, rhs)])
+                model.add_constraint(np.sum(Omicron[n,:,t]) >= 1)
+        
+        """Apply collision constraints"""
+        traj_indices = params.subtraj_indices if self.__agent_type == "rmcc" else range(N_select)
+        M_big, T, diag = self.__params.M_big, self.__params.T, self.__params.diag
+        for n, i in enumerate(traj_indices):
+            # select outerapprox. by index i
+            # if MCC then iterates through every combination of obstacles
+            A_union, b_union = A_unions[i], b_unions[i]
+            for t in range(T):
+                # for each timestep
+                As, bs = A_union[t], b_union[t]
+                for o, (A, b) in enumerate(zip(As, bs)):
+                    lhs = util.obj_matmul(A, X[n,t,:2]) + M_big*(1 - Delta[n,t,o])
+                    rhs = b + diag
+                    model.add_constraints([l >= r for (l,r) in zip(lhs, rhs)])
+                    model.add_constraint(np.sum(Delta[n,t,o]) >= 1)
+        
+        """Common to MCC+RMCC: set up coinciding constraints"""
+        for t in range(0, self.__n_coincide):
+            for x1, x2 in util.pairwise(X[:,t]):
+                model.add_constraints([l == r for (l, r) in zip(x1, x2)])
+
+        """Common to MCC+RMCC: set objective and run solver"""
+        start = params.x0[:2]
+        cost = np.sum((X[:,-1,:2] - goal)**2)
+        model.minimize(cost)
+        # model.print_information()
+        if self.log_cplex:
+            model.parameters.mip.display = 5
+            s = model.solve(log_output=True)
+        else:
+            model.solve()
+        # model.print_solution()
+
+        f = lambda x: x if isinstance(x, numbers.Number) else x.solution_value
+        U_star = util.obj_vectorize(f, U)
+        cost = cost.solution_value
+        X_star = util.obj_vectorize(f, X)
+        return util.AttrDict(cost=cost, U_star=U_star, X_star=X_star,
+                A_unions=A_unions, b_unions=b_unions, vertices=vertices,
+                start=start, goal=goal)
+
+    def do_single_control(self, params, ovehicles):
         """Decide parameters.
 
         TODO: acceleration limit is hardcoded to 8 m/s^2
@@ -657,7 +743,7 @@ class MidlevelAgent(AbstractDataCollector):
         model.add_constraints(self.compute_velocity_constraints(X[:, 2], X[:, 3]))
         model.add_constraints(self.compute_acceleration_constraints(U[:, 0], U[:, 1]))
 
-        """Apply motion dynamics constraints"""
+        """Apply road boundaries constraints"""
         M_big, T, diag = self.__params.M_big, self.__params.T, self.__params.diag
         for t in range(T):
             for seg_idx, (A, b) in enumerate(segs_polytopes):
@@ -684,9 +770,7 @@ class MidlevelAgent(AbstractDataCollector):
                     model.add_constraint(np.sum(Delta[indices, t]) >= 1)
         
         """Start from current vehicle position and minimize the objective"""
-        p_x, p_y, _ = carlautil.actor_to_location_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        start = np.array([p_x, p_y])
+        start = params.x0[:2]
         cost = (X[-1, 0] - goal[0])**2 + (X[-1, 1] - goal[1])**2
         model.minimize(cost)
         # TODO: warmstarting
@@ -719,20 +803,35 @@ class MidlevelAgent(AbstractDataCollector):
                 start=start, goal=goal)
 
     def __plot_scenario(self, pred_result, ovehicles, params, ctrl_result):
+        filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
         if self.__agent_type == "oa":
-            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
             lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
             ego_bbox = [lon, lat]
             params.update(self.__params)
             plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
                     self.__prediction_horizon, ego_bbox, filename=filename)
+        elif self.__agent_type == "mcc":
+            lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
+            ego_bbox = [lon, lat]
+            params.update(self.__params)
+            plot_multiple_coinciding_controls(pred_result, ovehicles, params,
+                    ctrl_result, ego_bbox, filename=filename)
+        elif self.__agent_type == "rmcc":
+            pass
+        else:
+            raise NotImplementedError()
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
         params = self.make_local_params(frame, ovehicles)
-        ctrl_result = self.do_highlevel_control(params, ovehicles)
+        if self.__agent_type == "oa":
+            ctrl_result = self.do_single_control(params, ovehicles)
+        elif self.__agent_type == "mcc" or self.__agent_type == "rmcc":
+            ctrl_result = self.do_multiple_control(params, ovehicles)
+        else:
+            raise NotImplementedError()
 
         """use control input next round for warm starting."""
         # self.U_warmstarting = ctrl_result.U_star
@@ -740,15 +839,25 @@ class MidlevelAgent(AbstractDataCollector):
         """Get trajectory"""
         trajectory = []
         velocity = []
-        X = np.concatenate((params.x0[None], ctrl_result.X_star))
-        n_steps = X.shape[0]
+        # X has shape (T+1, nx)
+        if self.__agent_type == "oa":
+            X = np.concatenate((params.x0[None], ctrl_result.X_star))
+            n_steps = X.shape[0]
+        elif self.__agent_type == "mcc" or self.__agent_type == "rmcc":
+            X = np.concatenate((params.x0[None], ctrl_result.X_star[0]))
+            n_steps = self.__n_coincide + 1
+            if self.log_agent:
+                logging.info(f"Optimized {params.N_traj} "
+                        f"trajectories avoiding {params.O} vehicles.")
+        else:
+            raise NotImplementedError()
         headings = []
         for t in range(1, n_steps):
             x, y = X[t, :2]
             y = -y # flip about x-axis again to move back to UE coordinates
             yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
             headings.append(yaw)
-             # flip about x-axis again to move back to UE coordinates
+            # flip about x-axis again to move back to UE coordinates
             yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
             transform = carla.Transform(carla.Location(x=x, y=y),carla.Rotation(yaw=yaw))
             trajectory.append(transform)
@@ -764,8 +873,17 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__plot_simulation_data.planned_trajectories[frame] = np.concatenate(
                         (params.x0[None], ctrl_result.X_star))
                 self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
+            elif self.__agent_type == "mcc" or self.__agent_type == "rmcc":
+                N_select = params.N_select if self.__agent_type == "rmcc" else params.N_traj
+                self.__plot_simulation_data.planned_trajectories[frame] = np.concatenate(
+                    (
+                        np.repeat(params.x0[None], N_select, axis=0)[:, None],
+                        ctrl_result.X_star
+                    ), axis=1
+                )
+                self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
             else:
-                raise NotImplementedError()
+                pass
         return trajectory, velocity
 
     def do_first_step(self, frame):

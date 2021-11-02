@@ -1,8 +1,5 @@
 """
 v3 is a modification of v2 that does multiple coinciding control.
-
-The control code from LCSS is based off:
-https://arxiv.org/pdf/1801.03663.pdf
 """
 
 # Built-in libraries
@@ -140,8 +137,8 @@ class MidlevelAgent(AbstractDataCollector):
             plot_vertices=False,
             plot_overapprox=False,
             **kwargs):
-        assert control_horizon <= prediction_horizon
-        assert n_coincide <= control_horizon
+        assert n_coincide <= prediction_horizon
+        assert control_horizon <= n_coincide
         self.__ego_vehicle = ego_vehicle
         self.__map_reader = map_reader
         self.__world = self.__ego_vehicle.get_world()
@@ -579,7 +576,7 @@ class MidlevelAgent(AbstractDataCollector):
             x, y = X[t]
             y = -y # flip about x-axis again to move back to UE coordinates
             yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
-             # flip about x-axis again to move back to UE coordinates
+            # flip about x-axis again to move back to UE coordinates
             yaw = util.reflect_radians_about_x_axis(yaw)
             transform = carla.Transform(
                     carla.Location(x=x, y=y),

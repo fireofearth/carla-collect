@@ -334,8 +334,6 @@ class LocalPlanner(object):
         speed    = self.ms_to_mkh(self.step_to_speed[self.step])
         args_lat = self.args_lat_city_dict
         args_long = self.args_long_city_dict
-        # args_lat = self.args_lat_hw_dict
-        # args_long = self.args_long_hw_dict
         pid_controller = VehiclePIDController(
                 self.__vehicle,
                 args_lateral=args_lat,

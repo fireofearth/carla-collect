@@ -1,7 +1,7 @@
 """
-v5 is a modification of v2_2 that does original approach on curved road boundaries
+v6 is a modification of v2_2 that does original approach on curved road boundaries
+and uses LTI bicycle model linearized around origin.
 
-    - A modification of original approach in v2_2
     - Still uses double integrator as model for ego vehicle.
     - Applies curved road boundaries using segmented polytopes.
 """
@@ -30,21 +30,17 @@ import control.matlab
 import docplex.mp
 import docplex.mp.model
 
-# Local libraries
-import carla
-import utility as util
-import carlautil
-import carlautil.debug
-
 try:
     from utils.trajectory_utils import prediction_output_to_trajectories
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
+from .util import plot_lcss_prediction, plot_oa_simulation
 from ..util import (get_vertices_from_center, profile,
         get_approx_union, plot_h_polyhedron, get_ovehicle_color_set,
-        plot_multiple_coinciding_controls, get_vertices_from_centers,
-        plot_lcss_prediction, plot_oa_simulation)
+        plot_multiple_coinciding_controls, get_vertices_from_centers)
+from ..dynamics import (get_state_matrix, get_input_matrix,
+        get_output_matrix, get_feedforward_matrix)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...lowlevel.v1_1 import LocalPlanner
@@ -57,6 +53,12 @@ from ....generate.scene.v2_2.trajectron_scene import (
 from ....generate.scene.trajectron_util import (
         standardization, plot_trajectron_scene)
 
+# Local libraries
+import carla
+import utility as util
+import carlautil
+import carlautil.debug
+
 class MidlevelAgent(AbstractDataCollector):
 
     Z_SENSOR_REL = 2.5
@@ -68,60 +70,78 @@ class MidlevelAgent(AbstractDataCollector):
                 attach_to=self.__ego_vehicle,
                 attachment_type=carla.AttachmentType.Rigid)
 
-    @staticmethod
-    def __get_state_space_representation(prediction_timestep):
-        """Get state-space representation of double integrator model.
-        """
-        # A, sys.A both have shape (4, 4)
-        A = np.diag([1, 1], k=2)
-        # B, sys.B both have shape (4, 2)
-        B = np.concatenate((np.diag([0,0]), np.diag([1,1]),))
-        # C has shape (2, 4)
-        C = np.concatenate((np.diag([1,1]), np.diag([0,0]),), axis=1)
-        # D has shape (2, 2)
-        D = np.diag([0, 0])
-        sys = control.matlab.c2d(control.matlab.ss(A, B, C, D), prediction_timestep)
-        A = np.array(sys.A)
-        B = np.array(sys.B)
-        return (A, B)
-
     def __make_global_params(self):
         """Get Global LCSS parameters used across all loops"""
         params = util.AttrDict()
+        # Slack variable for solver
+        # TODO: hardcoded
         params.M_big = 1000
-        params.u_max = 3.
-        params.A, params.B = self.__get_state_space_representation(
-                self.__prediction_timestep)
-        # number of state variables x, number of input variables u
-        # nx = 4, nu = 2
-        params.nx, params.nu = params.B.shape
+        # Control variable for solver, setting max acceleration
+        # TODO: hardcoded
+        params.max_a = 2
+        # Maximum steering angle
+        physics_control = self.__ego_vehicle.get_physics_control()
+        wheels = physics_control.wheels
+        params.limit_delta = np.deg2rad(wheels[0].max_steer_angle)
+        params.max_delta = 0.5*params.limit_delta
+        # TODO: what are the com values?
+        # (0.60, 0.0, -0.25)
+        # lon_com = physics_control.center_of_mass.x
+        # lat_com = physics_control.center_of_mass.y
+        # hi_com = physics_control.center_of_mass.z
         # longitudinal and lateral dimensions of car are normally 3.70 m, 1.79 m resp.
-        bbox_lon, bbox_lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
-        params.diag = np.sqrt(bbox_lon**2 + bbox_lat**2) / 2.
-        # Prediction parameters
-        params.T = self.__prediction_horizon
-        params.L = 4 # number of faces of obstacle sets
-
-        # Closed for solution of control without obstacles
-        A, B, T, nx, nu = params.A, params.B, params.T, params.nx, params.nu
-        # C1 has shape (nx, T*nx)
-        C1 = np.zeros((nx, T*nx,))
-        # C2 has shape (nx*(T - 1), nx*(T-1)) as A has shape (nx, nx)
-        C2 = np.kron(np.eye(T - 1), A)
-        # C3 has shape (nx*(T - 1), nx)
-        C3 = np.zeros(((T - 1)*nx, nx,))
-        # C, Abar have shape (nx*T, nx*T)
-        C = np.concatenate((C1, np.concatenate((C2, C3,), axis=1),), axis=0)
-        Abar = np.eye(T * nx) - C
-        # Bbar has shape (nx*T, nu*T) as B has shape (nx, nu)
-        Bbar = np.kron(np.eye(T), B)
-        # Gamma has shape (nx*(T + 1), nu*T) as Abar\Bbar has shape (nx*T, nu*T)
-        Gamma = np.concatenate((np.zeros((nx, T*nu,)),
-                np.linalg.solve(Abar, Bbar),))
-        params.Abar = Abar
-        params.Bbar = Bbar
-        params.Gamma = Gamma
+        params.bbox_lon, params.bbox_lat, _ = carlautil.actor_to_bbox_ndarray(
+                self.__ego_vehicle)
+        # Number of faces of obstacle sets
+        params.L = 4
+        # Minimum distance from vehicle to avoid collision. 
+        params.diag = np.sqrt(params.bbox_lon**2 + params.bbox_lat**2) / 2.
         return params
+
+    def __setup_rectangular_boundary_conditions(self):
+        # __road_segment_enclosure : np.array
+        #   Array of shape (4, 2) enclosing the road segment
+        # __road_seg_starting : np.array
+        #   The position and the heading angle of the starting waypoint
+        #   of the road of form [x, y, angle] in (meters, meters, radians).
+        self.__road_seg_starting, self.__road_seg_enclosure, self.__road_seg_params \
+                = self.__map_reader.road_segment_enclosure_from_actor(self.__ego_vehicle)
+        self.__road_seg_starting[1] *= -1 # need to flip about x-axis
+        self.__road_seg_starting[2] = util.reflect_radians_about_x_axis(
+                self.__road_seg_starting[2]) # need to flip about x-axis
+        self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
+        # __goal
+        #   Goal destination the vehicle should navigates to.
+        self.__goal = util.AttrDict(x=50, y=0, is_relative=True)
+
+    def __setup_curved_road_segmented_boundary_conditions(
+            self, turn_choices, max_distance):
+        # __turn_choices : list of int
+        #   List of choices of turns to make at intersections,
+        #   starting with the first intersection to the last.
+        self.__turn_choices = turn_choices
+        # __max_distance : number
+        #   Maximum distance from road
+        self.__max_distance = max_distance
+        # __road_segs.spline : scipy.interpolate.CubicSpline
+        #   The spline representing the path the vehicle should motion plan on.
+        # __road_segs.polytopes : list of (ndarray, ndarray)
+        #   List of polytopes in H-representation (A, b) where x is in polytope if Ax <= b.
+        # __road_segs.distances : ndarray
+        #   The distances along the spline to follow from nearest endpoint
+        #   before encountering corresponding covering polytope in index.
+        # __road_segs.positions : ndarray
+        #   The 2D positions of center of the covering polytope in index.
+        self.__road_segs = self.__map_reader.curved_road_segments_enclosure_from_actor(
+                    self.__ego_vehicle, self.__max_distance, choices=self.__turn_choices,
+                    flip_y=True)
+        logging.info(f"max curvature of planned path is {self.__road_segs.max_k}; "
+                     f"created {len(self.__road_segs.polytopes)} polytopes covering "
+                     f"a distance of {np.round(self.__max_distance, 2)} m in total.")
+        x, y = self.__road_segs.spline(self.__road_segs.distances[-1])
+        # __goal
+        #   Not used for motion planning when using this BC.
+        self.__goal = util.AttrDict(x=x, y=y, is_relative=False)
 
     def __init__(self,
             ego_vehicle,
@@ -129,8 +149,9 @@ class MidlevelAgent(AbstractDataCollector):
             other_vehicle_ids,
             eval_stg,
             n_burn_interval=4,
-            control_horizon=6,
             prediction_horizon=8,
+            control_horizon=6,
+            step_horizon=1,
             n_predictions=100,
             scene_builder_cls=TrajectronPlusPlusSceneBuilder,
             scene_config=OnlineConfig(),
@@ -160,11 +181,14 @@ class MidlevelAgent(AbstractDataCollector):
         #   Interval in prediction timesteps to skip prediction and control.
         self.__n_burn_interval = n_burn_interval
         # __control_horizon : int
-        #   Number of predictions timesteps to conduct control over.
+        #   Number of predictions timesteps to optimize control over.
         self.__control_horizon = control_horizon
         # __prediction_horizon : int
         #   Number of predictions timesteps to predict other vehicles over.
         self.__prediction_horizon = prediction_horizon
+        # __step_horizon : int
+        #   Number of steps to take at each iteration of MPC.
+        self.__step_horizon = step_horizon
         # __n_predictions : int
         #   Number of predictions to generate on each control step.
         self.__n_predictions = n_predictions
@@ -208,59 +232,13 @@ class MidlevelAgent(AbstractDataCollector):
         #     Where int key is frame index and value
         #     is a carla.LidarMeasurement or carla.SemanticLidarMeasurement
         self.__lidar_feeds = collections.OrderedDict()
-
         self.__prediction_timestep = self.__scene_config.record_interval \
                 * self.__world.get_settings().fixed_delta_seconds
         self.__local_planner = LocalPlanner(self.__ego_vehicle)
         self.__params = self.__make_global_params()
 
-        ####################################################
-        # rectangular boundary constraints are not used here
-        ####################################################
-
-        # __road_segment_enclosure : np.array
-        #   Array of shape (4, 2) enclosing the road segment
-        # __road_seg_starting : np.array
-        #   The position and the heading angle of the starting waypoint
-        #   of the road of form [x, y, angle] in (meters, meters, radians).
-        self.__road_seg_starting, self.__road_seg_enclosure, self.__road_seg_params \
-                = self.__map_reader.road_segment_enclosure_from_actor(self.__ego_vehicle)
-        self.__road_seg_starting[1] *= -1 # need to flip about x-axis
-        self.__road_seg_starting[2] = util.reflect_radians_about_x_axis(
-                self.__road_seg_starting[2]) # need to flip about x-axis
-        self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
-
-        ############################################
-        # curved road segmented boundary constraints
-        ############################################
-
-        # __turn_choices : list of int
-        #   List of choices of turns to make at intersections,
-        #   starting with the first intersection to the last.
-        self.__turn_choices = turn_choices
-        # __max_distance : number
-        #   Maximum distance from road
-        self.__max_distance = max_distance
-        # __road_segs.spline : scipy.interpolate.CubicSpline
-        #   The spline representing the path the vehicle should motion plan on.
-        # __road_segs.polytopes : list of (ndarray, ndarray)
-        #   List of polytopes in H-representation (A, b) where x is in polytope if Ax <= b.
-        # __road_segs.distances : ndarray
-        #   The distances along the spline to follow from nearest endpoint
-        #   before encountering corresponding covering polytope in index.
-        # __road_segs.positions : ndarray
-        #   The 2D positions of center of the covering polytope in index.
-        self.__road_segs = self.__map_reader.curved_road_segments_enclosure_from_actor(
-                    self.__ego_vehicle, self.__max_distance, choices=self.__turn_choices,
-                    flip_y=True)
-        logging.info(f"max curvature of planned path is {self.__road_segs.max_k}; "
-                     f"created {len(self.__road_segs.polytopes)} polytopes covering "
-                     f"a distance of {np.round(self.__max_distance, 2)} m in total.")
-        x, y = self.__road_segs.spline(self.__road_segs.distances[-1])
-        # __goal
-        #   Goal destination the vehicle should navigates to.
-        #   Not used for motion planning.
-        self.__goal = util.AttrDict(x=x, y=y, is_relative=False)
+        self.__setup_curved_road_segmented_boundary_conditions(
+                turn_choices, max_distance)
         
         self.log_cplex       = log_cplex
         self.log_agent       = log_agent
@@ -269,12 +247,12 @@ class MidlevelAgent(AbstractDataCollector):
         self.plot_boundary   = plot_boundary
         self.plot_vertices   = plot_vertices
         self.plot_overapprox = plot_overapprox
-
         if self.plot_simulation:
             self.__plot_simulation_data = util.AttrDict(
                 actual_trajectory=collections.OrderedDict(),
                 planned_trajectories=collections.OrderedDict(),
-                planned_controls=collections.OrderedDict()
+                planned_controls=collections.OrderedDict(),
+                goals=collections.OrderedDict()
             )
 
     def get_vehicle_state(self):
@@ -317,7 +295,7 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__plot_simulation_data.planned_controls,
                 self.__road_segs,
                 [lon, lat],
-                self.__control_horizon,
+                self.__step_horizon,
                 filename=filename
             )
         else:
@@ -387,30 +365,96 @@ class MidlevelAgent(AbstractDataCollector):
         
         return ovehicles
 
-    def make_local_params(self, frame, ovehicles):
-        """Get Local LCSS parameters that are environment dependent."""
-        params = util.AttrDict()
+    def get_current_steering(self):
+        """Get current steering angle in radians.
+        TODO: is this correct??
+        https://github.com/carla-simulator/carla/issues/699
+        """
+        return -self.__ego_vehicle.get_control().steer*self.__params.max_delta
+    
+    def get_current_velocity(self):
+        """
+        Get current velocity of vehicle in
+        """
+        v_0_x, v_0_y, _ = carlautil.actor_to_velocity_ndarray(
+                self.__ego_vehicle, flip_y=True)
+        return np.sqrt(v_0_x**2 + v_0_y**2)
 
-        """General local params."""
+    def make_local_params(self, frame, ovehicles):
+        """Get the linearized bicycle model using the vehicle's
+        immediate orientation."""
+        params = util.AttrDict()
         params.frame = frame
+
+        """Dynamics parameters"""
+        p_0_x, p_0_y, _ = carlautil.to_location_ndarray(
+                self.__ego_vehicle, flip_y=True)
+        
+        _, psi_0, _ = carlautil.actor_to_rotation_ndarray(
+                self.__ego_vehicle, flip_y=True)
+        v_0_mag = self.get_current_velocity()
+        delta_0 = self.get_current_steering()
+        # initial_state - state at current frame in world/local coordinates
+        #   Local coordinates has initial position and heading at 0
+        initial_state = util.AttrDict(
+            world=np.array([p_0_x, p_0_y, psi_0, v_0_mag, delta_0]),
+            local=np.array([0,     0,     0,     v_0_mag, delta_0])
+        )
+        params.initial_state = initial_state
+        # transform - transform points from local coordinates back to world coordinates.
+        M = np.array([
+            [math.cos(psi_0), -math.sin(psi_0), p_0_x],
+            [math.sin(psi_0),  math.cos(psi_0), p_0_y],
+        ])
+        def transform(X):
+            points = np.pad(X[:, :2], [(0, 0), (0, 1)], mode="constant", constant_values=1)
+            points = util.obj_matmul(points, M.T)
+            psis   = X[:, 2] + psi_0
+            return np.concatenate((points, psis[..., None], X[:, 3:]), axis=1)
+        params.transform = transform
+        # longitudinal and lateral dimensions of car are normally 3.70 m, 1.79 m resp.
+        bbox_lon = self.__params.bbox_lon
+        # TODO: use center of gravity from API instead
+        A = get_state_matrix(0, 0, 0, v_0_mag, delta_0,
+                l_r=0.5*bbox_lon, L=bbox_lon)
+        B = get_input_matrix()
+        C = get_output_matrix()
+        D = get_feedforward_matrix()
+        sys = control.matlab.c2d(control.matlab.ss(A, B, C, D),
+                self.__prediction_timestep)
+        A = np.array(sys.A)
+        B = np.array(sys.B)
+        # nx, nu - size of state variable and control input respectively.
+        nx, nu = sys.B.shape
+        params.nx, params.nu = nx, nu
+        T = self.__control_horizon
+        # Closed form solution to states given inputs
+        # C1 has shape (nx, T*nx)
+        C1 = np.zeros((nx, T*nx,))
+        # C2 has shape (nx*(T - 1), nx*(T-1)) as A has shape (nx, nx)
+        C2 = np.kron(np.eye(T - 1), A)
+        # C3 has shape (nx*(T - 1), nx)
+        C3 = np.zeros(((T - 1)*nx, nx,))
+        # C, Abar have shape (nx*T, nx*T)
+        C = np.concatenate((C1, np.concatenate((C2, C3,), axis=1),), axis=0)
+        Abar = np.eye(T * nx) - C
+        # Bbar has shape (nx*T, nu*T) as B has shape (nx, nu)
+        Bbar = np.kron(np.eye(T), B)
+        # Gamma has shape (nx*(T + 1), nu*T) as Abar\Bbar has shape (nx*T, nu*T)
+        Gamma = np.concatenate((np.zeros((nx, T*nu,)), np.linalg.solve(Abar, Bbar),))
+        params.Gamma = Gamma
+        # make state computation account for initial position and velocity
+        initial_local_rollout = np.concatenate(
+                [np.linalg.matrix_power(A, t) @ initial_state.local for t in range(T+1)])
+        params.initial_rollout = util.AttrDict(local=initial_local_rollout)
+
+        """Other vehicles"""
         # O - number of obstacles
         params.O = len(ovehicles)
         # K - for each o=1,...,O K[o] is the number of outer approximations for vehicle o
         params.K = np.zeros(params.O, dtype=int)
         for idx, vehicle in enumerate(ovehicles):
             params.K[idx] = vehicle.n_states
-        p_0_x, p_0_y, _ = carlautil.to_location_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        v_0_x, v_0_y, _ = carlautil.actor_to_velocity_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        # x0 : np.array
-        #   Initial state
-        x0 = np.array([p_0_x, p_0_y, v_0_x, v_0_y])
-        params.x0 = x0
-        A, T = self.__params.A, self.__params.T
-        # States_free_init has shape (nx*(T+1))
-        params.States_free_init = np.concatenate([
-                np.linalg.matrix_power(A, t) @ x0 for t in range(T+1)])
 
         """Local params for (random) multiple coinciding controls."""
         # N_traj - number of planned trajectories possible to compute
@@ -451,87 +495,57 @@ class MidlevelAgent(AbstractDataCollector):
         n_segs = len(self.__road_segs.polytopes)
         segment_length = self.__road_segs.segment_length
         v_lim = self.__ego_vehicle.get_speed_limit()
-        # TODO: use __prediction_horizon, not __control_horizon
-        # TODO: use __prediction_timestep, not 0.5
         go_forward = int(
-            (0.75 * v_lim*self.__prediction_timestep*self.__prediction_horizon) \
+            (0.75*v_lim*self.__prediction_timestep*self.__prediction_horizon) \
                 // segment_length + 1
         )
-        pos0 = params.x0[:2]
-        closest_idx = np.argmin(np.linalg.norm(self.__road_segs.positions - pos0, axis=1))
+        pos0 = params.initial_state.world[:2]
+        closest_idx = np.argmin(
+                np.linalg.norm(self.__road_segs.positions - pos0, axis=1))
         near_idx = max(closest_idx - 1, 0)
         far_idx = min(closest_idx + go_forward, n_segs)
         segs_polytopes = self.__road_segs.polytopes[near_idx:far_idx]
         goal_idx = min(closest_idx + go_forward, n_segs - 1)
         goal = self.__road_segs.positions[goal_idx]
 
+        psi_0 = params.initial_state.world[2]
+        seg_psi_bounds = []
+        epsilon = (1/6)*np.pi
+        for (x_1, y_1), (x_2, y_2) in self.__road_segs.tangents[near_idx:far_idx]:
+            theta_1 = util.npu.warp_radians_0_to_2pi(math.atan2(y_1, x_1)) - psi_0
+            theta_2 = util.npu.warp_radians_0_to_2pi(math.atan2(y_2, x_2)) - psi_0
+            theta_1 = util.npu.warp_radians_neg_pi_to_pi(theta_1)
+            theta_2 = util.npu.warp_radians_neg_pi_to_pi(theta_2)
+            seg_psi_bounds.append(
+                (min(theta_1, theta_2) - epsilon, max(theta_1, theta_2) + epsilon)
+            )
+
         if self.plot_boundary:
             self.__plot_segs_polytopes(params, segs_polytopes, goal)
-        return segs_polytopes, goal
+        return segs_polytopes, goal, seg_psi_bounds
     
-    def compute_velocity_constraints(self, v_x, v_y):
-        """Velocity states have coupled constraints.
-        Generate docplex constraints for velocity for double integrators.
-
-        Note often street speed limit is 30 km/h == 8.33.. m/s
-
-        Parameters
-        ==========
-        v_x : np.array of docplex.mp.vartype.VarType
-        v_y : np.array of docplex.mp.vartype.VarType
-        """
-        v_lim = self.__ego_vehicle.get_speed_limit() # is m/s
-        _, theta, _ = carlautil.actor_to_rotation_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        r = v_lim / 2
-        v_1 = r
-        v_2 = 0.75 * v_lim
-        c1 = v_2*((v_x - r*np.cos(theta))*np.cos(theta) \
-                + (v_y - r*np.sin(theta))*np.sin(theta))
-        c2 = v_1*((v_y - r*np.sin(theta))*np.cos(theta) \
-                - (v_x - r*np.cos(theta))*np.sin(theta))
-        c3 = np.abs(v_1 * v_2)
-        constraints = []
-        constraints.extend([ z <= c3 for z in  c1 + c2 ])
-        constraints.extend([ z <= c3 for z in -c1 + c2 ])
-        constraints.extend([ z <= c3 for z in  c1 - c2 ])
-        constraints.extend([ z <= c3 for z in -c1 - c2 ])
-        return constraints
-
-    def compute_acceleration_constraints(self, u_x, u_y):
-        """Accelaration control inputs have coupled constraints.
-        Generate docplex constraints for velocity for double integrators.
-
-        Present performance cars are capable of going from 0 to 60 mph in under 5 seconds.
-        Reference:
-        https://en.wikipedia.org/wiki/0_to_60_mph
+    def compute_dyamics_constraints(self, params, v, delta):
+        """Set velocity magnitude constraints.
+        Usually street speed limits are 30 km/h == 8.33.. m/s.
+        Speed limits can be 30, 40, 60, 90 km/h
 
         Parameters
         ==========
-        u_x : np.array of docplex.mp.vartype.VarType
-        u_y : np.array of docplex.mp.vartype.VarType
+        v : np.array of docplex.mp.vartype.VarType
         """
-        u_max = self.__params.u_max
-        _, theta, _ = carlautil.actor_to_rotation_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        r = -u_max*(1. / 2.)
-        a_1 = u_max*(3. / 2.)
-        a_2 = u_max
-        c1 = a_2*((u_x - r*np.cos(theta))*np.cos(theta) \
-                + (u_y - r*np.sin(theta))*np.sin(theta))
-        c2 = a_1*((u_y - r*np.sin(theta))*np.cos(theta) \
-                - (u_x - r*np.cos(theta))*np.sin(theta))
-        c3 = np.abs(a_1 * a_2)
+        max_v = self.__ego_vehicle.get_speed_limit() # is m/s
+        max_delta = self.__params.max_delta
         constraints = []
-        constraints.extend([ z <= c3 for z in  c1 + c2 ])
-        constraints.extend([ z <= c3 for z in -c1 + c2 ])
-        constraints.extend([ z <= c3 for z in  c1 - c2 ])
-        constraints.extend([ z <= c3 for z in -c1 - c2 ])
+        constraints.extend([ z <= max_v      for z in v ])
+        constraints.extend([ z >= 0          for z in v ])
+        constraints.extend([z  <=  max_delta for z in delta])
+        constraints.extend([z  >= -max_delta for z in delta])
         return constraints
 
     def __compute_vertices(self, params, ovehicles):
         """Compute verticles from predictions."""
-        T, K, n_ov = self.__params.T, params.K, params.O
+        K, n_ov = params.K, params.O
+        T = self.__prediction_horizon
         vertices = np.empty((T, np.max(K), n_ov), dtype=object).tolist()
         for ov_idx, ovehicle in enumerate(ovehicles):
             for latent_idx in range(ovehicle.n_states):
@@ -542,6 +556,55 @@ class MidlevelAgent(AbstractDataCollector):
                             ps, yaws, ovehicle.bbox)
 
         return vertices
+
+    def __plot_overapproximations(self, params, ovehicles, vertices, A_union, b_union):
+        fig, axes = plt.subplots(1, 2, figsize=(15, 7))
+        ax = axes[1]
+        X = vertices[-1][0][0][:,0:2].T
+        ax.scatter(X[0], X[1], color='r', s=2)
+        X = vertices[-1][0][0][:,2:4].T
+        ax.scatter(X[0], X[1], color='b', s=2)
+        X = vertices[-1][0][0][:,4:6].T
+        ax.scatter(X[0], X[1], color='g', s=2)
+        X = vertices[-1][0][0][:,6:8].T
+        ax.scatter(X[0], X[1], color='m', s=2)
+        A = A_union[-1][0][0]
+        b = b_union[-1][0][0]
+        try:
+            plot_h_polyhedron(ax, A, b, fc='none', ec='k')
+        except scipy.spatial.qhull.QhullError as e:
+            print(f"Failed to plot polyhedron of OV")
+
+        x, y, _ = carlautil.actor_to_location_ndarray(
+                self.__ego_vehicle, flip_y=True)
+        ax = axes[0]
+        ax.scatter(x, y, marker='*', c='k', s=100)
+        ovehicle_colors = get_ovehicle_color_set([ov.n_states for ov in ovehicles])
+        for ov_idx, ovehicle in enumerate(ovehicles):
+            for latent_idx in range(ovehicle.n_states):
+                logging.info(f"Plotting OV {ov_idx} latent value {latent_idx}.")
+                color = ovehicle_colors[ov_idx][latent_idx]
+                for t in range(self.__prediction_horizon):
+                    X = vertices[t][latent_idx][ov_idx][:,0:2].T
+                    ax.scatter(X[0], X[1], color=color, s=2)
+                    X = vertices[t][latent_idx][ov_idx][:,2:4].T
+                    ax.scatter(X[0], X[1], color=color, s=2)
+                    X = vertices[t][latent_idx][ov_idx][:,4:6].T
+                    ax.scatter(X[0], X[1], color=color, s=2)
+                    X = vertices[t][latent_idx][ov_idx][:,6:8].T
+                    ax.scatter(X[0], X[1], color=color, s=2)
+                    A = A_union[t][latent_idx][ov_idx]
+                    b = b_union[t][latent_idx][ov_idx]
+                    try:
+                        plot_h_polyhedron(ax, A, b, fc='none', ec=color)#, alpha=0.3)
+                    except scipy.spatial.qhull.QhullError as e:
+                        print(f"Failed to plot polyhedron of OV {ov_idx} latent value {latent_idx} timestep t={t}")
+        
+        for ax in axes:
+            ax.set_aspect('equal')
+        filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_overapprox"
+        fig.savefig(os.path.join('out', f"{filename}.png"))
+        fig.clf()
 
     def __compute_overapproximations(self, vertices, params, ovehicles):
         """Compute the approximation of the union of obstacle sets.
@@ -559,19 +622,22 @@ class MidlevelAgent(AbstractDataCollector):
         =======
         ndarray
             Case 1 agent type is oa:
-                TODO:
+                Collection of A matrices of shape (T, max(K), O, L, 2).
+                Where max(K) largest set of cluster.
             Case 2 agent type is (r)mcc:
                 Collection of A matrices of shape (N_traj, T, O, L, 2).
                 Axis 2 (zero-based) is sorted by ovehicle.
         ndarray
             Case 1 agent type is oa:
-                TODO:
+                Collection of b vectors of shape (T, max(K), O, L).
+                Where max(K) largest set of cluster.
             Case 2 agent type is (r)mcc:
                 Collection of b vectors of shape (N_traj, T, O, L).
                 Axis 2 (zero-based) is sorted by ovehicle.
         """
         if self.__agent_type == "oa":
-            T, K, n_ov = self.__params.T, params.K, params.O
+            K, n_ov = params.K, params.O
+            T = self.__prediction_horizon
             A_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
             b_union = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
             for ov_idx, ovehicle in enumerate(ovehicles):
@@ -584,9 +650,14 @@ class MidlevelAgent(AbstractDataCollector):
                         A_union[t][latent_idx][ov_idx] = A_union_k
                         b_union[t][latent_idx][ov_idx] = b_union_k
         
+            """Plot the overapproximation"""
+            if self.plot_overapprox:
+                self.__plot_overapproximations(params, ovehicles, vertices, A_union, b_union)
+
             return A_union, b_union
         elif self.__agent_type == "mcc" or self.__agent_type == "rmcc":
-            N_traj, T, O = params.N_traj, self.__params.T, params.O
+            N_traj, O = params.N_traj, params.O
+            T = self.__prediction_horizon
             A_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
             b_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
             for traj_idx, latent_indices in enumerate(
@@ -609,19 +680,22 @@ class MidlevelAgent(AbstractDataCollector):
         """Decide parameters.
 
         Since we're doing multiple coinciding, we want to compute...
+
         TODO finish description 
+        TODO update
         """
         vertices = self.__compute_vertices(params, ovehicles)
         A_unions, b_unions = self.__compute_overapproximations(vertices, params, ovehicles)
         
         """Apply motion planning problem"""
         # params.N_select params.N_traj params.subtraj_indices
-        N_select, L, T, K, O, Gamma, nu, nx = params.N_traj, self.__params.L, self.__params.T, \
-                params.K, params.O, self.__params.Gamma, self.__params.nu, self.__params.nx
-        u_max = self.__params.u_max
+        N_select, L, K, O, Gamma, nu, nx = params.N_traj, self.__params.L, \
+                params.K, params.O, params.Gamma, params.nu, params.nx
+        T = self.__control_horizon
+        max_a = self.__params.max_a
         model = docplex.mp.model.Model(name='obstacle_avoidance')
         # set up controls variables for each trajectory
-        u = np.array(model.continuous_var_list(N_select*T*nu, lb=-u_max, ub=u_max, name='control'))
+        u = np.array(model.continuous_var_list(N_select*T*nu, lb=-max_a, ub=max_a, name='control'))
         Delta = np.array(model.binary_var_list(O*L*N_select*T, name='delta')).reshape(N_select, T, O, L)
 
         raise NotImplementedError()
@@ -629,52 +703,65 @@ class MidlevelAgent(AbstractDataCollector):
     def do_highlevel_control(self, params, ovehicles):
         """Decide parameters.
 
-        TODO: acceleration limit is hardcoded to 8 m/s^2
         TODO finish description 
         """
         vertices = self.__compute_vertices(params, ovehicles)
         A_union, b_union = self.__compute_overapproximations(vertices, params, ovehicles)
-        segs_polytopes, goal = self.compute_segs_polytopes_and_goal(params)
+        segs_polytopes, goal, seg_psi_bounds = self.compute_segs_polytopes_and_goal(params)
 
         """Apply motion planning problem"""
         n_segs = len(segs_polytopes)
-        L, T, K, Gamma, nu, nx = self.__params.L, self.__params.T, params.K, \
-                self.__params.Gamma, self.__params.nu, self.__params.nx
-        u_max = self.__params.u_max
+        L, K, Gamma, nu, nx = self.__params.L, params.K, \
+                params.Gamma, params.nu, params.nx
+        T = self.__control_horizon
+        max_a, max_delta = self.__params.max_a, self.__params.max_delta
         model = docplex.mp.model.Model(name="proposed_problem")
-        u = np.array(model.continuous_var_list(nu*T, lb=-u_max, ub=u_max, name='u'),
+        min_u = np.vstack((np.zeros(T), np.full(T, -0.5*max_delta))).T.ravel()
+        max_u = np.vstack((np.full(T, max_a), np.full(T, 0.5*max_delta))).T.ravel()
+        u = np.array(model.continuous_var_list(nu*T, lb=min_u, ub=max_u, name='u'),
                 dtype=object)
+        # Slack variables for vehicle obstacles
         Delta = np.array(model.binary_var_list(L*np.sum(K)*T, name='delta'),
                 dtype=object).reshape(np.sum(K), T, L)
+        # Slack variables from road obstacles
         Omicron = np.array(model.binary_var_list(n_segs*T, name="omicron"),
                 dtype=object).reshape(n_segs, T)
-        
-        X = (params.States_free_init + util.obj_matmul(Gamma, u)).reshape(T + 1, nx)
+        # State variables
+        X = (params.initial_rollout.local + util.obj_matmul(Gamma, u)).reshape(T + 1, nx)
+        X = params.transform(X)
         X = X[1:]
+        # Control variables
         U = u.reshape(T, nu)
 
         """Apply motion dynamics constraints"""
-        model.add_constraints(self.compute_velocity_constraints(X[:, 2], X[:, 3]))
-        model.add_constraints(self.compute_acceleration_constraints(U[:, 0], U[:, 1]))
+        model.add_constraints(self.compute_dyamics_constraints(params, X[:, 3], X[:, 4]))
 
-        """Apply motion dynamics constraints"""
-        M_big, T, diag = self.__params.M_big, self.__params.T, self.__params.diag
-        for t in range(T):
+        """Apply road boundary constraints"""
+        M_big, diag = self.__params.M_big, self.__params.diag
+        psi_0 = params.initial_state.world[2]
+        for t in range(self.__control_horizon):
             for seg_idx, (A, b) in enumerate(segs_polytopes):
                 lhs = util.obj_matmul(A, X[t, :2]) - np.array(M_big*(1 - Omicron[seg_idx, t]))
                 rhs = b + diag
+                """Constraints on road boundaries"""
                 model.add_constraints(
                         [l <= r for (l,r) in zip(lhs, rhs)])
+                """Constraints on angle boundaries"""
+                # disabling do to failure in some circumstances.
+                # lhs = X[t, 2] - psi_0 - M_big*(1 - Omicron[seg_idx, t])
+                # model.add_constraint(lhs <= seg_psi_bounds[seg_idx][1])
+                # lhs = X[t, 2] - psi_0 + M_big*(1 - Omicron[seg_idx, t])
+                # model.add_constraint(lhs >= seg_psi_bounds[seg_idx][0])
             model.add_constraint(np.sum(Omicron[:, t]) >= 1)
 
-        """Apply collision constraints"""
-        T, K, diag, M_big = self.__params.T, params.K, \
+        """Apply vehicle collision constraints"""
+        K, diag, M_big = params.K, \
                 self.__params.diag, self.__params.M_big
         for ov_idx, ovehicle in enumerate(ovehicles):
             n_states = ovehicle.n_states
             sum_clu = np.sum(K[:ov_idx])
             for latent_idx in range(n_states):
-                for t in range(T):
+                for t in range(self.__control_horizon):
                     A_obs = A_union[t][latent_idx][ov_idx]
                     b_obs = b_union[t][latent_idx][ov_idx]
                     indices = sum_clu + latent_idx
@@ -684,10 +771,23 @@ class MidlevelAgent(AbstractDataCollector):
                     model.add_constraint(np.sum(Delta[indices, t]) >= 1)
         
         """Start from current vehicle position and minimize the objective"""
-        p_x, p_y, _ = carlautil.actor_to_location_ndarray(
-                self.__ego_vehicle, flip_y=True)
-        start = np.array([p_x, p_y])
+        w_ch_accel = 0.
+        w_ch_turning = 0.
+        w_accel = 0.
+        w_turning = 0.
+        # final destination objective
         cost = (X[-1, 0] - goal[0])**2 + (X[-1, 1] - goal[1])**2
+        # change in acceleration objective
+        for u1, u2 in util.pairwise(U[:, 0]):
+            _u = (u1 - u2)
+            cost += w_ch_accel*_u*_u
+        # change in turning rate objective
+        for u1, u2 in util.pairwise(U[:, 1]):
+            _u = (u1 - u2)
+            cost += w_ch_turning*_u*_u
+        cost += w_accel*np.sum(U[:, 0]**2)
+        # turning rate objective
+        cost += w_turning*np.sum(U[:, 1]**2)
         model.minimize(cost)
         # TODO: warmstarting
         # if self.U_warmstarting is not None:
@@ -716,7 +816,7 @@ class MidlevelAgent(AbstractDataCollector):
         X_star = util.obj_vectorize(f, X)
         return util.AttrDict(cost=cost, U_star=U_star, X_star=X_star,
                 A_union=A_union, b_union=b_union, vertices=vertices,
-                start=start, goal=goal)
+                goal=goal)
 
     def __plot_scenario(self, pred_result, ovehicles, params, ctrl_result):
         if self.__agent_type == "oa":
@@ -725,7 +825,7 @@ class MidlevelAgent(AbstractDataCollector):
             ego_bbox = [lon, lat]
             params.update(self.__params)
             plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
-                    self.__prediction_horizon, ego_bbox, filename=filename)
+                    self.__control_horizon, ego_bbox, filename=filename)
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
@@ -737,33 +837,30 @@ class MidlevelAgent(AbstractDataCollector):
         """use control input next round for warm starting."""
         # self.U_warmstarting = ctrl_result.U_star
 
-        """Get trajectory"""
+        """Get trajectory and velocity"""
         trajectory = []
         velocity = []
-        X = np.concatenate((params.x0[None], ctrl_result.X_star))
+        X = np.concatenate((params.initial_state.world[None], ctrl_result.X_star))
         n_steps = X.shape[0]
-        headings = []
         for t in range(1, n_steps):
-            x, y = X[t, :2]
+            x, y, yaw = X[t, :3]
             y = -y # flip about x-axis again to move back to UE coordinates
-            yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
-            headings.append(yaw)
              # flip about x-axis again to move back to UE coordinates
+            # yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
             yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
             transform = carla.Transform(carla.Location(x=x, y=y),carla.Rotation(yaw=yaw))
             trajectory.append(transform)
-            velocity.append(math.sqrt(X[t, 2]**2 + X[t, 3]**2))
+            velocity.append(X[t, 3])
 
         if self.plot_scenario:
             """Plot scenario"""
-            ctrl_result.headings = headings
             self.__plot_scenario(pred_result, ovehicles, params, ctrl_result)
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""
             if self.__agent_type == "oa":
-                self.__plot_simulation_data.planned_trajectories[frame] = np.concatenate(
-                        (params.x0[None], ctrl_result.X_star))
+                self.__plot_simulation_data.planned_trajectories[frame] = X
                 self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
+                self.__plot_simulation_data.goals[frame] = ctrl_result.goal
             else:
                 raise NotImplementedError()
         return trajectory, velocity
@@ -804,13 +901,17 @@ class MidlevelAgent(AbstractDataCollector):
             if frame_id < self.__n_burn_interval:
                 """Initially collect data without doing any control to the vehicle."""
                 pass
-            elif (frame_id - self.__n_burn_interval) % self.__control_horizon == 0:
+            elif (frame_id - self.__n_burn_interval) % self.__step_horizon == 0:
                 trajectory, velocity = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(trajectory,
                         self.__scene_config.record_interval, velocity=velocity)
             if self.plot_simulation:
                 """Save actual trajectory for final plotting"""
                 payload = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle, flip_y=True)
+                payload = np.array([
+                        payload[0], payload[1], payload[13],
+                        self.get_current_velocity(),
+                        self.get_current_steering()])
                 self.__plot_simulation_data.actual_trajectory[frame] = payload
 
         if not control:

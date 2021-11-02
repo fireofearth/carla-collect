@@ -16,7 +16,7 @@ from collect.generate import NaiveMapQuerier
 from collect.in_simulation.midlevel.v1 import LCSSHighLevelAgent
 from collect.generate.scene import OnlineConfig
 
-"""Test simulation of LCSSHighLevelAgent, the v1 midlevel controller
+"""Test simulation of LCSSHighLevelAgent, the v1 midlevel controller in open loop.
 
 To collect test names call
 (broken: starts another instance of CARLA?)

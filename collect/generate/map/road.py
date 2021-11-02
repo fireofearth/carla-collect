@@ -319,6 +319,9 @@ def cover_along_waypoints_fixedsize(start_wp, choices, max_distance, lane_width,
     =======
     util.AttrDict
         The data of the covering poytopes.
+        - spline    : the spline fitting the path of road network.
+        - max_k     : approx. max curvature of the spline.
+        - segment_length : length of spline segment covered by polytope. 
         - polytopes : list of ndarray polytopes with H-representation (A, b)
                       where points Ax <= b iff x is in the polytope.
         - distances : ndarray of distances along the spline to follow from nearest
@@ -326,6 +329,9 @@ def cover_along_waypoints_fixedsize(start_wp, choices, max_distance, lane_width,
                       in index.
         - positions : ndarray of 2D positions of center of the covering polytope
                       in index.
+        - tangents  : list of tuple of ndarray of ndarray
+                      The tangent vector components of the tangents entering and
+                      exiting the spline.
     """
     points = collect_points_along_path(start_wp, choices,
             max_distance, flip_x=flip_x, flip_y=flip_y)
@@ -348,8 +354,9 @@ def cover_along_waypoints_fixedsize(start_wp, choices, max_distance, lane_width,
     n = int(np.round(L / segment_length))
     distances = np.linspace(0, L, n)
     l = util.pairwise(zip(spline(distances), dspline(distances), ddspline(distances)))
-    polytopes = []
-    vertex_set = []
+    polytopes  = [] # polytope representation of rectangular cover
+    vertex_set = [] # vertex representation of rectangular cover
+    tangents   = []
     for (X1, dX1, ddX1), (X2, dX2, ddX2) in l:
         sgn1 = np.sign(dX1[0]*ddX1[1] - dX1[1]*ddX1[0])
         sgn2 = np.sign(dX2[0]*ddX2[1] - dX2[1]*ddX2[0])
@@ -363,11 +370,13 @@ def cover_along_waypoints_fixedsize(start_wp, choices, max_distance, lane_width,
         A, b = util.npu.vertices_to_halfspace_representation(vertices)
         polytopes.append((A, b))
         vertex_set.append(vertices)
+        tangents.append((dX1, dX2))
     return util.AttrDict(
         spline=spline,
         max_k=max_k,
         segment_length=segment_length,
         polytopes=polytopes,
         distances=distances,
-        positions=np.mean(np.stack(vertex_set), axis=1)
+        positions=np.mean(np.stack(vertex_set), axis=1),
+        tangents=tangents
     )

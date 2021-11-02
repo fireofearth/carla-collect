@@ -1,13 +1,13 @@
 """
 v2 is a generalization of v1.
-This uses time varying vehicle dynamical control.
 
-The control code from LCSS is based off:
-https://arxiv.org/pdf/1801.03663.pdf
+    - This is the original approach motion planner.
+    - It clusters predictions from other vehicles and computes a trajectory using a double integrator model for the ego vehicle.
+    - The dynamics are adapted based on the vehicle's heading at each iteration of the MPC.
 
 v2_1 has road boundary conditions, closed loop.
 Code profiling is also done here.
-v2_2 has code cleaning
+v2_2 has some refactoring, and cleaner code.
 """
 
 # Built-in libraries
@@ -95,6 +95,7 @@ class MidlevelAgent(AbstractDataCollector):
         """Get Global LCSS parameters used across all loops"""
         params = util.AttrDict()
         params.M_big = 1000
+        params.u_max = 3.
         params.A, params.B = self.__get_state_space_representation(
                 self.__prediction_timestep)
         # number of state variables x, number of input variables u
@@ -253,7 +254,9 @@ class MidlevelAgent(AbstractDataCollector):
             self.__plot_simulation_data.planned_trajectories,
             self.__plot_simulation_data.planned_controls,
             [lon, lat],
-            filename=filename)
+            self.__control_horizon,
+            filename=filename
+        )
 
     def destroy(self):
         """Release all the CARLA resources used by this collector."""
@@ -433,11 +436,12 @@ class MidlevelAgent(AbstractDataCollector):
         u_x : np.array of docplex.mp.vartype.VarType
         u_y : np.array of docplex.mp.vartype.VarType
         """
+        u_max = self.__params.u_max
         _, theta, _ = carlautil.actor_to_rotation_ndarray(
                 self.__ego_vehicle, flip_y=True)
-        r = -2.5
-        a_1 = 7.5
-        a_2 = 5.0
+        r = -u_max*(1. / 2.)
+        a_1 = u_max*(3. / 2.)
+        a_2 = u_max
         c1 = a_2*((u_x - r*np.cos(theta))*np.cos(theta) \
                 + (u_y - r*np.sin(theta))*np.sin(theta))
         c2 = a_1*((u_y - r*np.sin(theta))*np.cos(theta) \
@@ -578,8 +582,9 @@ class MidlevelAgent(AbstractDataCollector):
         """Apply motion planning problem"""
         L, T, K, Gamma, nu, nx = self.__params.L, self.__params.T, params.K, \
                 self.__params.Gamma, self.__params.nu, self.__params.nx
+        u_max = self.__params.u_max
         model = docplex.mp.model.Model(name="proposed_problem")
-        u = np.array(model.continuous_var_list(nu*T, lb=-8., ub=8., name='u'),
+        u = np.array(model.continuous_var_list(nu*T, lb=-u_max, ub=u_max, name='u'),
                 dtype=object)
         Delta = np.array(model.binary_var_list(L*np.sum(K)*T, name='delta'),
                 dtype=object).reshape(np.sum(K), T, L)
@@ -739,7 +744,6 @@ class MidlevelAgent(AbstractDataCollector):
         if not control:
             control = self.__local_planner.run_step()
         self.__ego_vehicle.apply_control(control)
-
 
     def remove_scene_builder(self, first_frame):
         raise Exception(f"Can't remove scene builder from {util.classname(first_frame)}.")

@@ -22,7 +22,7 @@ from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v3_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 
-"""Test the v3 midlevel controller
+"""Test midlevel controllers v2_2, v3, v4.
 
 To collect test names call
 (broken: starts another instance of CARLA?)
@@ -31,7 +31,10 @@ pytest --collect-only
 To run tests call
 pytest --log-cli-level=INFO --capture=tee-sys
 To run one test call e.gl
-pytest --log-cli-level=INFO --capture=tee-sys tests/test_in_simulation_v3.py::test_Town03_scenario[ovehicle_turn]
+pytest \
+    --log-cli-level=INFO \
+    --capture=tee-sys \
+    tests/test_controllers.py::test_Town03_scenario[ovehicle_turn]
 """
 
 class LoopEnum(enum.Enum):
@@ -233,7 +236,7 @@ SCENARIO_intersection_2 = pytest.param(
             other_spawn_ids=[241, 200],
             spawn_shifts=[None, None, 100],
             n_burn_interval=35,
-            run_interval=20,
+            run_interval=15,
             controls=CONTROLS_intersection_1,
             goal=GOAL_intersection_1,
             loop_type=LoopEnum.CLOSED_LOOP),
@@ -245,6 +248,12 @@ VARIABLES_OAAgent_ph8_ch8_np100 = pytest.param(
             prediction_horizon=8, control_horizon=8,
             n_predictions=100),
     id='OAAgent_ph8_ch8_np100'
+)
+VARIABLES_OAAgent_ph6_ch2_np100 = pytest.param(
+    OAAgent, CtrlParameters(
+            prediction_horizon=6, control_horizon=2,
+            n_predictions=100),
+    id='OAAgent_ph6_ch2_np100'
 )
 VARIABLES_OAAgent_ph4_ch1_np100 = pytest.param(
     OAAgent, CtrlParameters(
@@ -258,6 +267,12 @@ VARIABLES_MCCAgent_ph4_ch4_np100_ncoin1 = pytest.param(
             n_predictions=100, n_coincide=1),
     id='MCCAgent_ph4_ch4_np100_ncoin1'
 )
+VARIABLES_MCCAgent_ph8_ch1_np100_ncoin2 = pytest.param(
+    MCCAgent, CtrlParameters(
+            prediction_horizon=8, control_horizon=1,
+            n_predictions=100, n_coincide=2),
+    id='MCCAgent_ph8_ch1_np100_ncoin2'
+)
 VARIABLES_RMCCAgent_ph4_ch4_np100_ncoin1 = pytest.param(
     RMCCAgent, CtrlParameters(
             prediction_horizon=4, control_horizon=4,
@@ -270,8 +285,10 @@ VARIABLES_RMCCAgent_ph4_ch4_np100_ncoin1 = pytest.param(
     [
         VARIABLES_OAAgent_ph8_ch8_np100,
         VARIABLES_OAAgent_ph4_ch1_np100,
+        VARIABLES_OAAgent_ph6_ch2_np100,
         VARIABLES_MCCAgent_ph4_ch4_np100_ncoin1,
-        VARIABLES_RMCCAgent_ph4_ch4_np100_ncoin1
+        VARIABLES_MCCAgent_ph8_ch1_np100_ncoin2,
+        VARIABLES_RMCCAgent_ph4_ch4_np100_ncoin1,
     ],
 )
 @pytest.mark.parametrize(

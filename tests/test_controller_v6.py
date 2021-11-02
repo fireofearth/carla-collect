@@ -12,17 +12,17 @@ import carlautil
 
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-from collect.in_simulation.midlevel.v5 import MidlevelAgent
+from collect.in_simulation.midlevel.v6 import MidlevelAgent
 from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v3_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 
-"""Test the midlevel controller v5.
+"""Test the midlevel controller v6.
 
 pytest \
     --log-cli-level=INFO \
     --capture=tee-sys \
-    tests/test_controller_v5.py::test_Town03_scenario[intersection_3-OAAgent_ph4_ch1_np100]
+    tests/test_controller_v6.py::test_Town03_scenario[intersection_3-OAAgent_ph4_ch1_np100]
 """
 
 class OAAgent(MidlevelAgent):
@@ -31,12 +31,12 @@ class OAAgent(MidlevelAgent):
 
 class MCCAgent(MidlevelAgent):
     def __init__(self, *args, **kwargs):
-        raise NotImplementedError("MCC for v5 is not done.")
+        raise NotImplementedError("MCC for v6 is not done.")
         # super().__init__(*args, agent_type="mcc", **kwargs)
 
 class RMCCAgent(MidlevelAgent):
     def __init__(self, *args, **kwargs):
-        raise NotImplementedError("RMCC for v5 is not done.")
+        raise NotImplementedError("RMCC for v6 is not done.")
         # super().__init__(*args, agent_type="rmcc", **kwargs)
 
 class LoopEnum(enum.Enum):

@@ -283,18 +283,21 @@ def plot_lcss_prediction(pred_result, ovehicles,
     
     fig.tight_layout()
     fig.savefig(os.path.join('out', f"{filename}.png"))
+    fig.clf()
 
 def plot_oa_simulation(scene, actual_trajectory, planned_trajectories,
-        planned_controls, ego_bbox, filename="oa_simulation"):
-    """Plot actual trajectory and planned trajectories"""
+        planned_controls, road_segs, ego_bbox, step_horizon,
+        filename="oa_simulation"):
+    """Plot to compare between actual trajectory and planned trajectories"""
 
     scene_df = scene_to_df(scene)
     scene_df[['position_x', 'position_y']] += np.array([scene.x_min, scene.y_min])
     node_ids = scene_df['node_id'].unique()
-    _, actual_trajectory = util.unzip([i for i in actual_trajectory.items()])
+    frames, actual_trajectory = util.unzip([i for i in actual_trajectory.items()])
+    frames = np.array(frames)
     actual_trajectory = np.stack(actual_trajectory)
-    actual_xy = actual_trajectory[:, :2].T
-    _, planned_trajectories = util.unzip([i for i in planned_trajectories.items()])
+    actual_xy = actual_trajectory[:, :2]
+    planned_frames, planned_trajectories = util.unzip([i for i in planned_trajectories.items()])
     
     N = len(planned_trajectories)
     fig, axes = plt.subplots(N // 2 + (N % 2), 2, figsize=(10, (10 / 4)*N))
@@ -303,7 +306,8 @@ def plot_oa_simulation(scene, actual_trajectory, planned_trajectories,
     for ax in axes:
         """Render road overlay and plot actual trajectory"""
         render_scene(ax, scene, global_coordinates=True)
-        ax.plot(actual_xy[0], actual_xy[1], '-ko')
+        for A, b in road_segs.polytopes:
+            util.npu.plot_h_polyhedron(ax, A, b, fc='b', ec='b', alpha=0.2)
     
     for idx, node_id in enumerate(node_ids):
         """Plot OV trajectory"""
@@ -313,10 +317,15 @@ def plot_oa_simulation(scene, actual_trajectory, planned_trajectories,
         for ax in axes:
             ax.plot(X[0], X[1], ':.', color=AGENT_COLORS[idx % NCOLORS])
     
-    for ax, planned_trajectory in zip(axes, planned_trajectories):
+    for ax, planned_frame, planned_trajectory in zip(axes, planned_frames, planned_trajectories):
         """Plot planned trajectories on separate plots"""
         planned_xy = planned_trajectory[:, :2]
-        ax.plot(planned_xy.T[0], planned_xy.T[1], "--b.")
+        ax.plot(planned_xy.T[0], planned_xy.T[1], "--b.", zorder=20)
+        # plans are made in current frame, and carried out next frame
+        idx = np.argwhere(frames == planned_frame)[0, 0] + 1
+        ax.plot(actual_xy[:idx, 0], actual_xy[:idx, 1], '-ko')
+        ax.plot(actual_xy[idx:(idx + step_horizon), 0], actual_xy[idx:(idx + step_horizon), 1], '-o', color="orange")
+        ax.plot(actual_xy[(idx + step_horizon):, 0], actual_xy[(idx + step_horizon):, 1], '-ko')
         min_x, min_y = np.min(planned_xy, axis=0) - 20
         max_x, max_y = np.max(planned_xy, axis=0) + 20
         ax.set_xlim([min_x, max_x])
@@ -324,12 +333,13 @@ def plot_oa_simulation(scene, actual_trajectory, planned_trajectories,
 
     fig.tight_layout()
     fig.savefig(os.path.join('out', f"{filename}.png"))
+    fig.clf()
 
 #########################################
 # Methods for multiple coinciding control
 #########################################
 
-def plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
+def _plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
         params, ctrl_result, X, headings, t, traj_idx, latent_indices, ego_bbox):
     ovehicle_colors = get_ovehicle_color_set()
     ax.imshow(map_data.road_bitmap, extent=map_data.extent,
@@ -338,6 +348,7 @@ def plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
             origin='lower', cmap=clr.ListedColormap(['none', 'yellow']))
     ax.imshow(map_data.lane_div_bitmap, extent=map_data.extent,
             origin='lower', cmap=clr.ListedColormap(['none', 'silver']))
+
     ax.plot(ctrl_result.start[0], ctrl_result.start[1],
             marker='*', markersize=8, color="blue")
     ax.plot(ctrl_result.goal[0], ctrl_result.goal[1],
@@ -385,7 +396,7 @@ def plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
     ax.set_title(f"t = {t}")
     ax.set_aspect('equal')
 
-def plot_multiple_coinciding_controls(pred_result, ovehicles,
+def _plot_multiple_coinciding_controls(pred_result, ovehicles,
         params, ctrl_result, ego_bbox, filename='lcss_control'):
     """
     Parameters
@@ -426,10 +437,159 @@ def plot_multiple_coinciding_controls(pred_result, ovehicles,
         headings = np.array(headings)
 
         for t, ax in zip(range(T), axes):
-            plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
+            _plot_multiple_coinciding_controls_timestep(ax, map_data, ovehicles,
                     params, ctrl_result, X, headings, t, traj_idx, latent_indices, ego_bbox)
         fig.tight_layout()
         fig.savefig(os.path.join('out', f"{filename}_traj{traj_idx + 1}.png"))
+        fig.clf()
+
+def plot_multiple_coinciding_controls_timestep(ax, scene, ovehicles,
+        params, ctrl_result, X_star, headings, t, traj_idx, latent_indices,
+        ego_bbox, extent=None):
+    ovehicle_colors = get_ovehicle_color_set()
+    render_scene(ax, scene, global_coordinates=True)
+    ax.plot(ctrl_result.start[0], ctrl_result.start[1],
+            marker='*', markersize=8, color="blue")
+    ax.plot(ctrl_result.goal[0], ctrl_result.goal[1],
+            marker='*', markersize=8, color="green")
+
+    # Plot ego vehicle trajectory
+    ax.plot(X_star[:(t + 2), 0], X_star[:(t + 2), 1], 'k-o', markersize=2)
+
+    # Get vertices of EV and plot its bounding box
+    vertices = get_vertices_from_center(
+            ctrl_result.X_star[traj_idx, t, :2], headings[t], ego_bbox)
+    bb = patches.Polygon(vertices.reshape((-1,2,)), closed=True, color='k', fc='none')
+    ax.add_patch(bb)
+
+    # Plot other vehicles
+    for ov_idx, ovehicle in enumerate(ovehicles):
+        # Plot past trajectory
+        latent_idx = latent_indices[ov_idx]
+        color = ovehicle_colors[ov_idx][0]
+        ax.plot(ovehicle.past[:,0], ovehicle.past[:,1],
+                marker='o', markersize=2, color=color)
+
+        # Plot overapproximation
+        color = ovehicle_colors[ov_idx][latent_idx]
+        A = ctrl_result.A_unions[traj_idx][t][ov_idx]
+        b = ctrl_result.b_unions[traj_idx][t][ov_idx]
+        try:
+            plot_h_polyhedron(ax, A, b, ec=color, alpha=1)
+        except scipy.spatial.qhull.QhullError as e:
+            print(f"Failed to plot polyhedron at timestep t={t}")
+            
+        # Plot vertices
+        vertices = ctrl_result.vertices[t][latent_idx][ov_idx]
+        X = vertices[:,0:2].T
+        ax.scatter(X[0], X[1], color=color, s=2)
+        X = vertices[:,2:4].T
+        ax.scatter(X[0], X[1], color=color, s=2)
+        X = vertices[:,4:6].T
+        ax.scatter(X[0], X[1], color=color, s=2)
+        X = vertices[:,6:8].T
+        ax.scatter(X[0], X[1], color=color, s=2)
+
+    if extent is not None:
+        ax.set_xlim([extent[0], extent[1]])
+        ax.set_ylim([extent[2], extent[3]])
+    ax.set_title(f"t = {t}")
+    ax.set_aspect('equal')
+
+def plot_multiple_coinciding_controls(pred_result, ovehicles,
+        params, ctrl_result, ego_bbox, filename='lcss_control'):
+    """
+    Parameters
+    ==========
+    predict_result : util.AttrDict
+        Payload containing scene, timestep, nodes, predictions, z,
+        latent_probs, past_dict, ground_truth_dict
+    ovehicles : list of OVehicle
+    params : util.AttrDict
+    ctrl_result : util.AttrDict
+    ego_bbox : list of int
+    filename : str
+    """
+
+    """Plots for paper"""
+    for traj_idx, latent_indices in enumerate(
+            util.product_list_of_list([range(ovehicle.n_states) for ovehicle in ovehicles])):
+        
+        T = params.T
+        fig, axes = plt.subplots(T // 2 + (T % 2), 2, figsize=(10, (10 / 4)*T))
+        axes = axes.ravel()
+
+        """Get control trajectory data"""
+        X_star = np.concatenate((ctrl_result.start[None], ctrl_result.X_star[traj_idx, :, :2]), axis=0)
+        x_min, y_min = np.min(X_star, axis=0) - 20
+        x_max, y_max = np.max(X_star, axis=0) + 20
+        extent = (x_min, x_max, y_min, y_max)
+        headings = []
+        for t in range(1, T + 1):
+            heading = np.arctan2(X_star[t, 1] - X_star[t - 1, 1], X_star[t, 0] - X_star[t - 1, 0])
+            headings.append(heading)
+        headings = np.array(headings)
+
+        for t, ax in zip(range(T), axes):
+            plot_multiple_coinciding_controls_timestep(ax, pred_result.scene, ovehicles,
+                    params, ctrl_result, X_star, headings, t, traj_idx, latent_indices,
+                    ego_bbox, extent=extent)
+        fig.tight_layout()
+        fig.savefig(os.path.join('out', f"{filename}_traj{traj_idx + 1}.png"))
+        fig.clf()
+
+def plot_multiple_simulation(scene, actual_trajectory, planned_trajectories,
+        planned_controls, road_segs, ego_bbox, control_horizon,
+        filename="oa_simulation"):
+    """Plot to compare between actual trajectory and planned trajectories"""
+
+    scene_df = scene_to_df(scene)
+    scene_df[['position_x', 'position_y']] += np.array([scene.x_min, scene.y_min])
+    node_ids = scene_df['node_id'].unique()
+    frames, actual_trajectory = util.unzip([i for i in actual_trajectory.items()])
+    frames = np.array(frames)
+    actual_trajectory = np.stack(actual_trajectory)
+    actual_xy = actual_trajectory[:, :2]
+    planned_frames, planned_trajectories = util.unzip([i for i in planned_trajectories.items()])
+    
+    N = len(planned_trajectories)
+    fig, axes = plt.subplots(N // 2 + (N % 2), 2, figsize=(10, (10 / 4)*N))
+    axes = axes.ravel()
+
+    for ax in axes:
+        """Render road overlay and plot actual trajectory"""
+        render_scene(ax, scene, global_coordinates=True)
+        for A, b in road_segs.polytopes:
+            util.npu.plot_h_polyhedron(ax, A, b, fc='b', ec='b', alpha=0.2)
+    
+    for idx, node_id in enumerate(node_ids):
+        """Plot OV trajectory"""
+        if node_id == "ego": continue
+        node_df = scene_df[scene_df['node_id'] == node_id]
+        X = node_df[['position_x', 'position_y']].values.T
+        for ax in axes:
+            ax.plot(X[0], X[1], ':.', color=AGENT_COLORS[idx % NCOLORS])
+    
+    for ax, planned_frame, planned_trajectory in zip(axes, planned_frames, planned_trajectories):
+        """Plot planned trajectories on separate plots"""
+        idx = np.argwhere(frames == planned_frame)[0, 0] + 1
+        # plans are made in current frame, and carried out next frame
+        ax.plot(actual_xy[:idx, 0], actual_xy[:idx, 1], '-ko')
+        ax.plot(actual_xy[idx:(idx + control_horizon), 0], actual_xy[idx:(idx + control_horizon), 1], '-o', color="orange")
+        ax.plot(actual_xy[(idx + control_horizon):, 0], actual_xy[(idx + control_horizon):, 1], '-ko')
+        # planned_trajectory has shape (N_select, T, nx)
+        for _planned_trajectory in planned_trajectory:
+            planned_xy = _planned_trajectory[:, :2]
+            ax.plot(planned_xy.T[0], planned_xy.T[1], "--b.", zorder=20)
+        _planned_xy = planned_trajectory.reshape(-1, planned_trajectory.shape[2])
+        min_x, min_y = np.min(_planned_xy[:, :2], axis=0) - 20
+        max_x, max_y = np.max(_planned_xy[:, :2], axis=0) + 20
+        ax.set_xlim([min_x, max_x])
+        ax.set_ylim([min_y, max_y])
+
+    fig.tight_layout()
+    fig.savefig(os.path.join('out', f"{filename}.png"))
+    fig.clf()
 
 #######################################################
 # Methods for probabilistic multiple coinciding control

@@ -1,9 +1,6 @@
 """
-v4 is a modification of v3 that does probabilistic multiple coinciding control.
+v4 is a modification of v3 that does random multiple coinciding control.
 It randomly selects a subset of trajectories to optimize.
-
-The control code from LCSS is based off:
-https://arxiv.org/pdf/1801.03663.pdf
 """
 
 # Built-in libraries

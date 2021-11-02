@@ -1,9 +1,9 @@
 """
 v2 is a generalization of v1.
-This uses time varying vehicle dynamical control.
 
-The control code from LCSS is based off:
-https://arxiv.org/pdf/1801.03663.pdf
+    - This is the original approach motion planner.
+    - It clusters predictions from other vehicles and computes a trajectory using a double integrator model for the ego vehicle.
+    - The dynamics are adapted based on the vehicle's heading at each iteration of the MPC.
 """
 
 import sys

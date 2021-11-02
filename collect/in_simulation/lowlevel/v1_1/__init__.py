@@ -29,8 +29,8 @@ class VehiclePIDController():
     low level control a vehicle from client side
     """
 
-    def __init__(self, vehicle, args_lateral, args_longitudinal, offset=0, max_throttle=0.75, max_brake=0.3,
-                 max_steering=0.8):
+    def __init__(self, vehicle, args_lateral, args_longitudinal, offset=0, max_throttle=1., max_brake=1.,
+                 max_steering=1.):
         """
         Constructor method.
 
@@ -81,12 +81,12 @@ class VehiclePIDController():
             control.throttle = 0.0
             control.brake = min(abs(acceleration), self.max_brake)
 
+        # Disable steering regulation. This should be set by midlevel controller.
         # Steering regulation: changes cannot happen abruptly, can't steer too much.
-
-        if current_steering > self.past_steering + 0.1:
-            current_steering = self.past_steering + 0.1
-        elif current_steering < self.past_steering - 0.1:
-            current_steering = self.past_steering - 0.1
+        # if current_steering > self.past_steering + 0.1:
+        #     current_steering = self.past_steering + 0.1
+        # elif current_steering < self.past_steering - 0.1:
+        #     current_steering = self.past_steering - 0.1
 
         if current_steering >= 0:
             steering = min(self.max_steer, current_steering)
@@ -261,31 +261,46 @@ class LocalPlanner(object):
         self.__vehicle = vehicle
         self.__world = self.__vehicle.get_world()
         self.dt = self.__world.get_settings().fixed_delta_seconds
+
         self.args_lat_hw_dict = {
                 'K_P': 0.75,
                 'K_D': 0.02,
                 'K_I': 0.4,
-                'dt': self.dt}
-        self.args_lat_city_dict = {
-                'K_P': 0.58,
-                'K_D': 0.02,
-                'K_I': 0.5,
                 'dt': self.dt}
         self.args_long_hw_dict = {
                 'K_P': 0.37,
                 'K_D': 0.024,
                 'K_I': 0.032,
                 'dt': self.dt}
+
+        self.args_lat_city_dict = {
+                'K_P': 0.58,
+                'K_D': 0.02,
+                'K_I': 0.5,
+                'dt': self.dt}
         self.args_long_city_dict = {
                 'K_P': 0.15,
                 'K_D': 0.05,
                 'K_I': 0.07,
                 'dt': self.dt}
+
+        ## modify/test PID parameters
+        # self.args_lat_city_dict = {
+        #         'K_P': 0.50,
+        #         'K_D': 0.02,
+        #         'K_I': 0.50,
+        #         'dt': self.dt}
+        # self.args_long_city_dict = {
+        #         'K_P': 0.50,
+        #         'K_D': 0.05,
+        #         'K_I': 0.20,
+        #         'dt': self.dt}
+        ##
         self.step_to_trajectory = None
         self.step_to_speed = None
         self.step = 0
 
-    def set_plan(self, trajectory, step_period):
+    def set_plan(self, trajectory, step_period, velocity=None):
         """
         Parameters
         ==========
@@ -296,6 +311,9 @@ class LocalPlanner(object):
             The fixed number steps of between two consecutive
             points in the trajectory.
             Each step takes carla.WorldSettings.fixed_delta_seconds time.
+        velocity : list of float
+            Specifies velocity to control the vehicle at in m/s for each point in trajectory.
+            If not provided, then infer velocity from trajectory.
         """
         def get_velocity_ms(t1, t2):
             """Get velocity in m/s"""
@@ -306,8 +324,11 @@ class LocalPlanner(object):
 
         n_steps = len(trajectory)
         self.step_to_trajectory = [trajectory[step] for step in range(n_steps) for _ in range(step_period)]
-        velocities = util.pairwise_do(get_velocity_ms, [self.__vehicle.get_transform()] + trajectory)
-        self.step_to_speed = [velocities[step] for step in range(n_steps) for _ in range(step_period)]
+        if velocity is None:
+            velocities = util.pairwise_do(get_velocity_ms, [self.__vehicle.get_transform()] + trajectory)
+            self.step_to_speed = [velocities[step] for step in range(n_steps) for _ in range(step_period)]
+        else:
+            self.step_to_speed = [velocity[step] for step in range(n_steps) for _ in range(step_period)]
         self.step = 0
 
     @staticmethod
@@ -334,8 +355,6 @@ class LocalPlanner(object):
         speed    = self.ms_to_mkh(self.step_to_speed[self.step])
         args_lat = self.args_lat_city_dict
         args_long = self.args_long_city_dict
-        # args_lat = self.args_lat_hw_dict
-        # args_long = self.args_long_hw_dict
         pid_controller = VehiclePIDController(
                 self.__vehicle,
                 args_lateral=args_lat,

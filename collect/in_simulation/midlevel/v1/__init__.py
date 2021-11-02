@@ -1,6 +1,8 @@
 """
-v1 uses a direct translation from from Heejin Matlab control code for the LCSS paper
-The car is intended to only go forward
+v1 uses a direct translation from from Heejin Matlab control code for the LCSS paper.
+The car is intended to only go forward.
+This v1 motion planner is designated as the original approach.
+It clusters predictions from other vehicles and computes a trajectory using a double integrator model for the ego vehicle. 
 
 The control code from LCSS is based off:
 https://arxiv.org/pdf/1801.03663.pdf
