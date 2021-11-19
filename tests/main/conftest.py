@@ -124,7 +124,8 @@ def instantiate_synchronous(request, carla_Town):
     traffic_manager.set_synchronous_mode(True)
     traffic_manager.set_global_distance_to_leading_vehicle(1.0)
     traffic_manager.global_percentage_speed_difference(0.0)
-    traffic_manager.set_random_device_seed(2)
+    # Note, random seed does not work perfectly
+    # traffic_manager.set_random_device_seed(0)
     world.apply_settings(settings)
     return carla_Town
 

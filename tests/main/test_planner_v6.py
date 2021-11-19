@@ -1,4 +1,5 @@
 
+import os
 import time
 import enum
 import functools
@@ -83,6 +84,8 @@ class ScenarioParameters(object):
             max_distance=100,
             ignore_signs=True,
             ignore_lights=True,
+            ignore_vehicles=True,
+            auto_lane_change=False,
             loop_type=LoopEnum.OPEN_LOOP):
         self.ego_spawn_idx = ego_spawn_idx
         self.other_spawn_ids = other_spawn_ids
@@ -95,6 +98,8 @@ class ScenarioParameters(object):
         self.max_distance = max_distance
         self.ignore_signs = ignore_signs
         self.ignore_lights = ignore_lights
+        self.ignore_vehicles = ignore_vehicles
+        self.auto_lane_change = auto_lane_change
         self.loop_type = loop_type
 
 class CtrlParameters(object):
@@ -119,11 +124,27 @@ def shift_spawn_point(carla_map, k, spawn_shifts, spawn_point):
         return spawn_point
     return carlautil.move_along_road(carla_map, spawn_point, spawn_shift)
 
+
+def attach_camera_to_spectator(world, frame):
+    os.makedirs(f"out/starting{frame}", exist_ok=True)
+    blueprint = world.get_blueprint_library().find('sensor.camera.rgb')
+    blueprint.set_attribute('image_size_x', '512')
+    blueprint.set_attribute('image_size_y', '512')
+    blueprint.set_attribute('fov', '80')
+    blueprint.set_attribute('sensor_tick', '0.2')
+    sensor = world.spawn_actor(blueprint, carla.Transform(), attach_to=world.get_spectator())
+    def take_picture(image):
+        image.save_to_disk(f"out/starting{frame}/frame{image.frame}_spectator.png")
+    sensor.listen(take_picture)
+    return sensor
+
 def scenario(scenario_params, agent_constructor, ctrl_params,
             carla_synchronous, eval_env, eval_stg):
     ego_vehicle = None
     agent = None
+    spectator_camera = None
     other_vehicles = []
+    record_spectator = False
     client, world, carla_map, traffic_manager = carla_synchronous
 
     try:
@@ -155,10 +176,14 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
                     traffic_manager.ignore_signs_percentage(vehicle, 100.)
                 if scenario_params.ignore_lights:
                     traffic_manager.ignore_lights_percentage(vehicle, 100.)
+                if scenario_params.ignore_vehicles:
+                    traffic_manager.ignore_vehicles_percentage(vehicle, 100.)
+                if not scenario_params.auto_lane_change:
+                    traffic_manager.auto_lane_change(vehicle, False)
                 other_vehicles.append(vehicle)
                 other_vehicle_ids.append(vehicle.id)
 
-        world.tick()
+        frame = world.tick()
         agent = agent_constructor(
                 ego_vehicle,
                 map_reader,
@@ -173,7 +198,7 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
                 scene_builder_cls=TrajectronPlusPlusSceneBuilder,
                 turn_choices=scenario_params.turn_choices,
                 max_distance=scenario_params.max_distance,
-                plot_boundary=True,
+                plot_boundary=False,
                 log_agent=False,
                 log_cplex=False,
                 plot_scenario=True,
@@ -182,9 +207,6 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
                 scene_config=online_config)
         agent.start_sensor()
         assert agent.sensor_is_listening
-        # if scenario_params.goal:
-        #     agent.set_goal(scenario_params.goal.x, scenario_params.goal.y,
-        #             is_relative=scenario_params.goal.is_relative)
         
         """Move the spectator to the ego vehicle.
         The positioning is a little off"""
@@ -201,12 +223,18 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
                     x=(state[0] + goal_x) /2.,
                     y=(state[1] + goal_y) /2.,
                     z=state[2] + 50)
+        # configure the spectator
         world.get_spectator().set_transform(
             carla.Transform(
                 location,
-                carla.Rotation(pitch=-90)
+                # carla.Rotation(pitch=-90, yaw=-90),
+                carla.Rotation(pitch=-70, yaw=-90, roll=20)
             )
         )
+        record_spectator = False
+        if record_spectator:
+            # attach camera to spectator
+            spectator_camera = attach_camera_to_spectator(world, frame)
 
         n_burn_frames = scenario_params.n_burn_interval*online_config.record_interval
         if scenario_params.loop_type == LoopEnum.CLOSED_LOOP:
@@ -225,6 +253,8 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
             agent.run_step(frame, control=control)
  
     finally:
+        if spectator_camera:
+            spectator_camera.destroy()
         if agent:
             agent.destroy()
         if ego_vehicle:
@@ -232,14 +262,17 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
         for other_vehicle in other_vehicles:
             other_vehicle.destroy()
     
-    time.sleep(1)
+        if record_spectator == True:
+            time.sleep(5)
+        else:
+            time.sleep(1)
 
 ##################
 # Town03 scenarios
 
 CONTROLS_intersection_3 = [
     util.AttrDict(
-        interval=(0, 8*5,),
+        interval=(0, 9*5,),
         control=carla.VehicleControl(throttle=0.4)
     ),
 ]
@@ -248,15 +281,60 @@ SCENARIO_intersection_3 = pytest.param(
     ScenarioParameters(
             ego_spawn_idx=85,
             other_spawn_ids=[14],
-            spawn_shifts=[None, 25],
-            n_burn_interval=15,
-            run_interval=13,
+            # spawn_shifts=[-5, 20],
+            spawn_shifts=[-5, 0],
+            n_burn_interval=10,
+            run_interval=14,
             controls=CONTROLS_intersection_3,
             turn_choices=[1],
-            max_distance=70,
+            max_distance=75,
             loop_type=LoopEnum.CLOSED_LOOP),
     id="intersection_3"
 )
+CONTROLS_intersection_3_1 = [
+    util.AttrDict(
+        interval=(0, 9*5,),
+        control=carla.VehicleControl(throttle=0.36)
+    ),
+]
+SCENARIO_intersection_3_1 = pytest.param(
+    # left turn of low curvature to angled road
+    # 4 other vehicles
+    ScenarioParameters(
+            ego_spawn_idx=85,
+            other_spawn_ids=[14, 14, 15, 15],
+            # spawn_shifts=[-5, 31, 23, -11, -19],
+            spawn_shifts=[-5, 31, 23, -5, -13],
+            n_burn_interval=10,
+            run_interval=22,
+            controls=CONTROLS_intersection_3_1,
+            turn_choices=[1],
+            max_distance=100,
+            loop_type=LoopEnum.CLOSED_LOOP),
+    id="intersection_3_1"
+)
+CONTROLS_intersection_3_2 = [
+    util.AttrDict(
+        interval=(0, 9*5,),
+        control=carla.VehicleControl(throttle=0.30)
+    ),
+]
+SCENARIO_intersection_3_2 = pytest.param(
+    # left turn of low curvature to angled road
+    # 4 other vehicles
+    ScenarioParameters(
+            ego_spawn_idx=85,
+            other_spawn_ids=[14, 14, 15, 15],
+            spawn_shifts=[-5, 31, 23, -12, -21],
+            n_burn_interval=10,
+            run_interval=18,
+            controls=CONTROLS_intersection_3_2,
+            turn_choices=[1],
+            max_distance=100,
+            loop_type=LoopEnum.CLOSED_LOOP),
+    id="intersection_3_2"
+)
+
 SCENARIO_intersection_4 = pytest.param(
     # simple left turn
     ScenarioParameters(
@@ -315,13 +393,29 @@ VARIABLES_OAAgent_ph8_ch8_np100 = pytest.param(
     ),
     id="OAAgent_ph8_ch8_np100"
 )
-VARIABLES_OAAgent_ph6_ch6_np100 = pytest.param(
+VARIABLES_OAAgent_ph6_ch6_np200 = pytest.param(
     OAAgent, CtrlParameters(
         prediction_horizon=6,
         control_horizon=6,
-        n_predictions=100
+        n_predictions=200
     ),
-    id="OAAgent_ph6_ch6_np100"
+    id="OAAgent_ph6_ch6_np200"
+)
+VARIABLES_OAAgent_ph6_ch6_np1000 = pytest.param(
+    OAAgent, CtrlParameters(
+        prediction_horizon=6,
+        control_horizon=6,
+        n_predictions=1000
+    ),
+    id="OAAgent_ph6_ch6_np1000"
+)
+VARIABLES_OAAgent_ph6_ch6_np2000 = pytest.param(
+    OAAgent, CtrlParameters(
+        prediction_horizon=6,
+        control_horizon=6,
+        n_predictions=2000
+    ),
+    id="OAAgent_ph6_ch6_np2000"
 )
 VARIABLES_OAAgent_ph6_ch3_np100 = pytest.param(
     OAAgent, CtrlParameters(
@@ -370,7 +464,9 @@ VARIABLES_RMCCAgent_ph6_ch1_np100 = pytest.param(
     "agent_constructor,ctrl_params",
     [
         VARIABLES_OAAgent_ph8_ch8_np100,
-        VARIABLES_OAAgent_ph6_ch6_np100,
+        VARIABLES_OAAgent_ph6_ch6_np200,
+        VARIABLES_OAAgent_ph6_ch6_np1000,
+        VARIABLES_OAAgent_ph6_ch6_np2000,
         VARIABLES_OAAgent_ph6_ch3_np100,
         VARIABLES_OAAgent_ph6_ch2_np100,
         VARIABLES_OAAgent_ph6_ch1_np100,
@@ -382,12 +478,17 @@ VARIABLES_RMCCAgent_ph6_ch1_np100 = pytest.param(
     "scenario_params",
     [
         SCENARIO_intersection_3,
+        SCENARIO_intersection_3_1,
+        SCENARIO_intersection_3_2,
         SCENARIO_intersection_4,
         SCENARIO_intersection_5,
         SCENARIO_roundabout_1
     ]
 )
+# def test_Town03_scenario(scenario_params, agent_constructor, ctrl_params,
+#         carla_Town03_synchronous, eval_env):
 def test_Town03_scenario(scenario_params, agent_constructor, ctrl_params,
         carla_Town03_synchronous, eval_env, eval_stg_cuda):
+    # eval_stg_cuda = None
     scenario(scenario_params, agent_constructor, ctrl_params,
             carla_Town03_synchronous, eval_env, eval_stg_cuda)

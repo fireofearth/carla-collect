@@ -79,11 +79,14 @@ class MidlevelAgent(AbstractDataCollector):
         # Control variable for solver, setting max acceleration
         # TODO: hardcoded
         params.max_a = 2
+        params.min_a = -7
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
         wheels = physics_control.wheels
         params.limit_delta = np.deg2rad(wheels[0].max_steer_angle)
         params.max_delta = 0.5*params.limit_delta
+        # Since vehicle has a max steering rate (unknown, add a reasonable constraint).
+        params.max_delta_chg = 0.16*params.limit_delta
         # TODO: what are the com values?
         # (0.60, 0.0, -0.25)
         # lon_com = physics_control.center_of_mass.x
@@ -123,6 +126,8 @@ class MidlevelAgent(AbstractDataCollector):
         # __max_distance : number
         #   Maximum distance from road
         self.__max_distance = max_distance
+        # __road_segs : util.AttrDict
+        #   Container of road segment properties.
         # __road_segs.spline : scipy.interpolate.CubicSpline
         #   The spline representing the path the vehicle should motion plan on.
         # __road_segs.polytopes : list of (ndarray, ndarray)
@@ -294,9 +299,11 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__plot_simulation_data.planned_trajectories,
                 self.__plot_simulation_data.planned_controls,
                 self.__road_segs,
-                [lon, lat],
+                np.array([lon, lat]),
                 self.__step_horizon,
-                filename=filename
+                self.__prediction_timestep,
+                filename=filename,
+                road_boundary_constraints=False,
             )
         else:
             raise NotImplementedError()
@@ -369,8 +376,9 @@ class MidlevelAgent(AbstractDataCollector):
         """Get current steering angle in radians.
         TODO: is this correct??
         https://github.com/carla-simulator/carla/issues/699
+        No it is not really correct. Should update to CARLA 0.9.12 and fix.
         """
-        return -self.__ego_vehicle.get_control().steer*self.__params.max_delta
+        return -self.__ego_vehicle.get_control().steer*self.__params.limit_delta
     
     def get_current_velocity(self):
         """
@@ -714,10 +722,10 @@ class MidlevelAgent(AbstractDataCollector):
         L, K, Gamma, nu, nx = self.__params.L, params.K, \
                 params.Gamma, params.nu, params.nx
         T = self.__control_horizon
-        max_a, max_delta = self.__params.max_a, self.__params.max_delta
+        max_a, min_a, max_delta_chg = self.__params.max_a, self.__params.min_a, self.__params.max_delta_chg
         model = docplex.mp.model.Model(name="proposed_problem")
-        min_u = np.vstack((np.zeros(T), np.full(T, -0.5*max_delta))).T.ravel()
-        max_u = np.vstack((np.full(T, max_a), np.full(T, 0.5*max_delta))).T.ravel()
+        min_u = np.vstack((np.full(T, min_a), np.full(T, -max_delta_chg))).T.ravel()
+        max_u = np.vstack((np.full(T, max_a), np.full(T,  max_delta_chg))).T.ravel()
         u = np.array(model.continuous_var_list(nu*T, lb=min_u, ub=max_u, name='u'),
                 dtype=object)
         # Slack variables for vehicle obstacles
@@ -742,7 +750,7 @@ class MidlevelAgent(AbstractDataCollector):
         for t in range(self.__control_horizon):
             for seg_idx, (A, b) in enumerate(segs_polytopes):
                 lhs = util.obj_matmul(A, X[t, :2]) - np.array(M_big*(1 - Omicron[seg_idx, t]))
-                rhs = b + diag
+                rhs = b# - diag
                 """Constraints on road boundaries"""
                 model.add_constraints(
                         [l <= r for (l,r) in zip(lhs, rhs)])
@@ -822,7 +830,7 @@ class MidlevelAgent(AbstractDataCollector):
         if self.__agent_type == "oa":
             filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
             lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
-            ego_bbox = [lon, lat]
+            ego_bbox = np.array([lon, lat])
             params.update(self.__params)
             plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
                     self.__control_horizon, ego_bbox, filename=filename)
@@ -845,10 +853,9 @@ class MidlevelAgent(AbstractDataCollector):
         for t in range(1, n_steps):
             x, y, yaw = X[t, :3]
             y = -y # flip about x-axis again to move back to UE coordinates
-             # flip about x-axis again to move back to UE coordinates
-            # yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
+            # flip about x-axis again to move back to UE coordinates
             yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
-            transform = carla.Transform(carla.Location(x=x, y=y),carla.Rotation(yaw=yaw))
+            transform = carla.Transform(carla.Location(x=x, y=y), carla.Rotation(yaw=yaw))
             trajectory.append(transform)
             velocity.append(X[t, 3])
 
@@ -861,6 +868,7 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__plot_simulation_data.planned_trajectories[frame] = X
                 self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
                 self.__plot_simulation_data.goals[frame] = ctrl_result.goal
+                self.__plot_simulation_data
             else:
                 raise NotImplementedError()
         return trajectory, velocity
@@ -876,7 +884,7 @@ class MidlevelAgent(AbstractDataCollector):
             "test",
             self.__first_frame,
             scene_config=self.__scene_config,
-            debug=True)
+            debug=False)
 
     def run_step(self, frame, control=None):
         """Run motion planner step. Should be called whenever carla.World.click() is called.

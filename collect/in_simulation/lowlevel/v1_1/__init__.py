@@ -290,12 +290,12 @@ class LocalPlanner(object):
         #         'K_D': 0.02,
         #         'K_I': 0.50,
         #         'dt': self.dt}
-        # self.args_long_city_dict = {
-        #         'K_P': 0.50,
-        #         'K_D': 0.05,
-        #         'K_I': 0.20,
-        #         'dt': self.dt}
-        ##
+        self.args_long_city_dict = {
+                'K_P': 0.60,
+                'K_D': 0.05,
+                'K_I': 0.25,
+                'dt': self.dt}
+        #
         self.step_to_trajectory = None
         self.step_to_speed = None
         self.step = 0

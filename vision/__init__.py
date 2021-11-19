@@ -1,0 +1,2 @@
+class VisionException(Exception):
+    pass

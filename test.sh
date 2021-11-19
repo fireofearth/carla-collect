@@ -65,7 +65,22 @@
 pytest \
 	--log-cli-level=INFO \
 	--capture=tee-sys \
-	tests/test_controller_v6.py::test_Town03_scenario[intersection_3-OAAgent_ph6_ch3_np100]
+	tests/test_controller_v6.py::test_Town03_scenario[intersection_3-OAAgent_ph6_ch6_np200]
+
+# pytest \
+# 	--log-cli-level=INFO \
+# 	--capture=tee-sys \
+# 	tests/test_controller_v6.py::test_Town03_scenario[intersection_3_1-OAAgent_ph6_ch6_np200]
+
+# pytest \
+# 	--log-cli-level=INFO \
+# 	--capture=tee-sys \
+# 	tests/test_controller_v6.py::test_Town03_scenario[intersection_3_1-OAAgent_ph6_ch6_np1000]
+
+# pytest \
+# 	--log-cli-level=INFO \
+# 	--capture=tee-sys \
+# 	tests/test_controller_v6.py::test_Town03_scenario[intersection_3_1-OAAgent_ph6_ch6_np2000]
 
 ##################
 ## test standalone

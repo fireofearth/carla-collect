@@ -8,16 +8,21 @@ import atexit
 import carla
 
 CARLA_HOST = '127.0.0.1'
-CARLA_PORT = 3000
+CARLA_PORT = 2000
 CARLA_MAP = 'Town03'
 
+
+should_run_server = False
 with open('out/test_server.txt', 'w') as log:
-    binpath = os.path.join(os.environ['CARLA_DIR'], 'CarlaUE4.sh')
-    # "DISPLAY= ./CarlaUE4.sh -opengl"
-    settings = f"-opengl -quality-level=Low -carla-rpc-port={CARLA_PORT}"
-    cmd = ' '.join([binpath, settings]).split()
-    print("Calling", *cmd)
-    proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=log)
+    if should_run_server:
+        binpath = os.path.join(os.environ['CARLA_DIR'], 'CarlaUE4.sh')
+        # "DISPLAY= ./CarlaUE4.sh -opengl"
+        settings = f"-opengl -quality-level=Low -carla-rpc-port={CARLA_PORT}"
+        cmd = ' '.join([binpath, settings]).split()
+        print("Calling", *cmd)
+        proc = subprocess.Popen(cmd, stderr=subprocess.STDOUT, stdout=log)
+    else:
+        proc = None
 
     time.sleep(5.0)
     client = carla.Client(CARLA_HOST, CARLA_PORT)
@@ -55,7 +60,8 @@ with open('out/test_server.txt', 'w') as log:
         has_picture = True
         # Kill CARLA server using process group ID,
         # not the process ID itself.
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        if proc is not None:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
         print("Shutting down.")
         
     sensor.listen(lambda data: take_picture(data))

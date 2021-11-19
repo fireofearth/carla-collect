@@ -293,7 +293,7 @@ class LocalPlanner(object):
             The trajectory to control the vehicle. The trajectory should
             not include the vehicle's current position.
         step_period : int
-            The fixed number steps of between two consecutive
+            The fixed number steps between two consecutive
             points in the trajectory.
             Each step takes carla.WorldSettings.fixed_delta_seconds time.
         """

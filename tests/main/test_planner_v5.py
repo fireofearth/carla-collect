@@ -63,6 +63,8 @@ class ScenarioParameters(object):
         Ignore stop signs.
     ignore_lights : bool
         Ignore traffic lights.
+    n_burn_interval : int
+        Number of timesteps to burn before running motion planner.
     """
 
     def __init__(self,
