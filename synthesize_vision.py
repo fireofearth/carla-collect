@@ -11,7 +11,69 @@ import carla
 import utility as util
 import carlautil
 
-from vision.v2 import DataGenerator
+from vision.v4 import DataGenerator
+
+
+def parse_arguments():
+    argparser = argparse.ArgumentParser(description=__doc__)
+    argparser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        dest="debug",
+        help="Show debug information",
+    )
+    argparser.add_argument(
+        "--host",
+        metavar="H",
+        default="127.0.0.1",
+        help="IP of the host server (default: 127.0.0.1)",
+    )
+    argparser.add_argument(
+        "-p",
+        "--port",
+        metavar="P",
+        default=2000,
+        type=int,
+        help="TCP port to listen to (default: 2000)",
+    )
+    argparser.add_argument(
+        "--n-scenes",
+        default=4000,
+        type=int,
+        help=(
+            "Number of scenes to synthesize data. ",
+            "The scenes are split among the available CARLA maps.",
+        ),
+    )
+    argparser.add_argument(
+        "--n-frames",
+        default=10,
+        type=int,
+        help=(
+            "Number of frames to attempt to capture for each scene. "
+            "The RGB camera is unable to capture all the frames. "
+            "In CARLA 0.9.11 Normally the RGB camera captures 10 frames out of 20."
+            "This seems to be fixed in version 0.9.12."
+        ),
+    )
+    argparser.add_argument(
+        "--add-pedestrian",
+        action="store_true",
+        help=""
+    )
+    argparser.add_argument("--demo", action="store_true", help="")
+    return argparser.parse_args()
+
+
+def main():
+    config = parse_arguments()
+    log_level = logging.DEBUG if config.debug else logging.INFO
+    logging.basicConfig(
+        format="%(asctime)s: %(levelname)s: %(message)s", level=log_level
+    )
+    dg = DataGenerator(config)
+    dg.run()
 
 
 def visualize_rotation_order():
@@ -124,29 +186,29 @@ def visualize_weather():
 
     # Altitude angle of the sun. Values range from -90 to 90 corresponding to midnight and midday each.
     # NOTE: effects of setting angle below zero are the same (night)
-    weather.sun_altitude_angle = 10
+    weather.sun_altitude_angle = -2
 
     # Fog concentration or thickness. It only affects the RGB camera sensor. Values range from 0 to 100.
     # NOTE: fog related settings do not work in OpenGL
     # NOTE: setting fog_density > 40 makes the sky turn black 
-    weather.fog_density = 0
+    # weather.fog_density = 0
 
     # Fog start distance. Values range from 0 to infinite (in meters).
-    weather.fog_distance = 0
+    # weather.fog_distance = 0
 
     # Density of the fog (as in specific mass) from 0 to infinity. The bigger the value, the more dense and heavy it will be, and the fog will reach smaller heights. Corresponds to Fog Height Falloff in the UE docs.
     # If the value is 0, the fog will be lighter than air, and will cover the whole scene.
     # A value of 1 is approximately as dense as the air, and reaches normal-sized buildings.
     # For values greater than 5, the air will be so dense that it will be compressed on ground level.
-    weather.fog_falloff = 5
+    # weather.fog_falloff = 5
 
     # Controls interaction of light with large particles like pollen or air pollution resulting in a hazy sky with halos around the light sources.
     # When set to 0, there is no contribution.
     # NOTE: increases memory of simulation significantly
-    print("mie_scattering_scale", weather.mie_scattering_scale)
+    # print("mie_scattering_scale", weather.mie_scattering_scale)
 
     # NOTE: set to < 0.1 or get weird light effects. Maps may have different scattering scales.
-    print("rayleigh_scattering_scale", weather.rayleigh_scattering_scale)
+    # print("rayleigh_scattering_scale", weather.rayleigh_scattering_scale)
 
     world.set_weather(weather)
 
@@ -163,62 +225,6 @@ def visualize_sunshine():
         world.set_weather(weather)
         world.wait_for_tick()
 
-
-def parse_arguments():
-    argparser = argparse.ArgumentParser(description=__doc__)
-    argparser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        dest="debug",
-        help="Show debug information",
-    )
-    argparser.add_argument(
-        "--host",
-        metavar="H",
-        default="127.0.0.1",
-        help="IP of the host server (default: 127.0.0.1)",
-    )
-    argparser.add_argument(
-        "-p",
-        "--port",
-        metavar="P",
-        default=2000,
-        type=int,
-        help="TCP port to listen to (default: 2000)",
-    )
-    argparser.add_argument(
-        "--n-scenes",
-        default=4000,
-        type=int,
-        help=(
-            "Number of scenes to synthesize data. ",
-            "The scenes are split among the available CARLA maps.",
-        ),
-    )
-    argparser.add_argument(
-        "--n-frames",
-        default=10,
-        type=int,
-        help=(
-            "Number of frames to attempt to capture for each scene. "
-            "The RGB camera is unable to capture all the frames. "
-            "In CARLA 0.9.11 Normally the RGB camera captures 10 frames out of 20."
-            "This seems to be fixed in version 0.9.12."
-        ),
-    )
-    argparser.add_argument("--demo", action="store_true", help="")
-    return argparser.parse_args()
-
-
-def main():
-    config = parse_arguments()
-    log_level = logging.DEBUG if config.debug else logging.INFO
-    logging.basicConfig(
-        format="%(asctime)s: %(levelname)s: %(message)s", level=log_level
-    )
-    dg = DataGenerator(config)
-    dg.run()
 
 def visualize_wheel_turning_1():
     """This method shows that setting steer = 1.0 makes the vehicle
@@ -427,10 +433,16 @@ def inspect_vehicle():
                 location=vehicle.get_location())
         world.get_spectator().set_transform(transform)
         world.wait_for_tick()
-        """ The vehicle's forward vector is a unit vector """
-        f = vehicle.get_transform().get_forward_vector()
-        f = np.array([f.x, f.y, f.z])
-        print( np.linalg.norm(f) )
+        def get_forward_vector():
+            """ The vehicle's forward vector is a unit vector """
+            f = vehicle.get_transform().get_forward_vector()
+            f = np.array([f.x, f.y, f.z])
+            print( np.linalg.norm(f) )
+        def get_bounding_box():
+            bb = vehicle.bounding_box
+            e = bb.extent
+            print(np.array([e.x, e.y, e.z])*2)
+        # get_bounding_box()
 
     finally:
         if vehicle:
@@ -550,13 +562,73 @@ def visualize_vehicles_in_the_dark():
             if vehicle:
                 vehicle.destroy()
 
+
+def visualize_distances():
+    config = parse_arguments()
+    client = carla.Client(config.host, config.port)
+    client.set_timeout(10.0)
+    world = client.get_world()
+    carla_map = world.get_map()
+    blueprints = world.get_blueprint_library().filter("vehicle.*")
+    blueprints = [x for x in blueprints if int(x.get_attribute("number_of_wheels")) == 4]
+    blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
+    blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
+    blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
+    blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
+    blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
+    blueprints = [x for x in blueprints if not x.id.endswith('sprinter')]
+    blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+    # blueprint = world.get_blueprint_library().find("vehicle.audi.a2")
+    blueprint = random.choice(blueprints)
+    spawn_point = carla_map.get_spawn_points()[0]
+    vehicle = None
+    try:
+        vehicle = world.spawn_actor(blueprint, spawn_point)
+        transform = carlautil.spherical_to_camera_watcher_transform(
+                3, math.pi, math.pi*(1/6),
+                location=spawn_point.location)
+        world.get_spectator().set_transform(transform)
+
+        thickness = 0.2
+        color = carla.Color(r=255, g=0, b=0, a=100)
+        life_time = 6
+        loc = carlautil.to_location_ndarray(spawn_point.location)
+        scale = 2.
+        z = loc[2] + 0.5
+        box = np.array([[-1., -1.], [1., -1.], [1., 1.], [-1., 1.]])
+        box = (box*scale) + loc[:2]
+        world.debug.draw_line(
+            carla.Location(box[0, 0], box[0, 1], z),
+            carla.Location(box[1, 0], box[1, 1], z),
+            thickness=thickness, color=color, life_time=life_time)
+        world.debug.draw_line(
+            carla.Location(box[1, 0], box[1, 1], z),
+            carla.Location(box[2, 0], box[2, 1], z),
+            thickness=thickness, color=color, life_time=life_time)
+        world.debug.draw_line(
+            carla.Location(box[2, 0], box[2, 1], z),
+            carla.Location(box[3, 0], box[3, 1], z),
+            thickness=thickness, color=color, life_time=life_time)
+        world.debug.draw_line(
+            carla.Location(box[3, 0], box[3, 1], z),
+            carla.Location(box[0, 0], box[0, 1], z),
+            thickness=thickness, color=color, life_time=life_time)
+        time.sleep(life_time)
+        world.wait_for_tick()
+
+    finally:
+        if vehicle:
+            vehicle.destroy()
+
+
 if __name__ == "__main__":
     # visualize_rotation_order()
     # visualize_sunshine()
     # visualize_weather()
     # visualize_wheel_turning_2()
     # visualize_wheel_turning_3()
-    inspect_vehicle()
+    # inspect_vehicle()
     # visualize_vehicles_in_the_dark()
     # jump_to_transform()
-    # main()
+    # visualize_distances()
+    main()
