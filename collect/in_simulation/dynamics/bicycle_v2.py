@@ -89,6 +89,7 @@ def get_input_matrix(x, y, psi, v, delta, l_r=0.5, L=1.0):
     dbeta  = get_dbeta_ddelta(delta, l_r=l_r, L=L)
     tan2   = tan(delta)**2
     return np.array([
+        # a, delta
         [0, -v*sin(psi + beta)*dbeta],
         [0,  v*cos(psi + beta)*dbeta],
         [0, (v/L)*(cos(beta)*(1 + tan2) - sin(beta)*tan(delta)*dbeta)],

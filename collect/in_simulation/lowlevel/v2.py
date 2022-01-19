@@ -219,13 +219,13 @@ class VehiclePIDController(object):
     def set_plan(self, target_speeds, target_angles, step_period):
         """Given a trajectory consisting of steering angles and
         velocities, use lateral and longitudinal PID controllers
-        to1
+        to actuate the vehicle.
 
         Parameters
         ==========
-        target_speed : list of float
+        target_speeds : list of float
             Target speeds in m/s.
-        target_angle : list of float
+        target_angles : list of float
             Target angles in radians.
             The lists `target_speed` and `target_angle` should have the same length.
         step_period : int

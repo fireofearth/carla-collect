@@ -25,6 +25,7 @@ from ...dynamics.bicycle_v2 import compute_nonlinear_dynamical_states
 import carla
 import utility as util
 import utility.npu
+import utility.plu
 import carlautil
 import carlautil.debug
 
@@ -76,7 +77,7 @@ def plot_oa_simulation_timestep(
     if road_boundary_constraints:
         for A, b in road_segs.polytopes:
             util.npu.plot_h_polyhedron(ax, A, b, fc='b', ec='b', alpha=0.2)
-    ax.plot(*goal, marker='*', markersize=8, color="yellow")
+    ax.plot(goal.x, goal.y, marker='*', markersize=8, color="yellow")
     
     "EV bounding box at current position"
     position = actual_trajectory[frame_idx, :2]
@@ -179,8 +180,8 @@ def plot_oa_simulation(
     planned_controls : collections.OrderedDict of (int, ndarray)
         Indexed by frame ID. The EV's planned controls over timesteps T with
         acceleration, steering as ndarray of shape (2, T).
-    goals : collections.OrderedDict of (int, ndarray)
-        Indexed by frame ID. EV's goal global (x, y) position.
+    goals : collections.OrderedDict of (int, util.AttrDict)
+        Indexed by frame ID. EV's goal.
     road_segs : util.AttrDict
         Container of road segment properties.
     ego_bbox : ndarray

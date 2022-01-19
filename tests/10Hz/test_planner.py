@@ -30,7 +30,7 @@ pytest --collect-only
 
 To run tests call
 pytest --log-cli-level=INFO --capture=tee-sys
-To run one test call e.gl
+To run one test call e.g.
 pytest \
     --log-cli-level=INFO \
     --capture=tee-sys \

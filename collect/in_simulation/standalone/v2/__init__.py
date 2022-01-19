@@ -62,9 +62,6 @@ class MotionPlanner(object):
         # Max steering
         #   We fix max turning angle to make reasonable planned turns.
         params.max_delta = 0.5*params.limit_delta
-        # Max steering rate
-        #   CARLA max steering rate can be >250 deg depending on car speed.
-        params.max_delta_chg = 0.16*params.limit_delta
         # longitudinal and lateral dimensions of car are normally 3.70 m, 1.79 m resp.
         params.bbox_lon, params.bbox_lat, _ = carlautil.actor_to_bbox_ndarray(
                 self.__ego_vehicle)
@@ -201,7 +198,7 @@ class MotionPlanner(object):
         filename = f"agent{self.__ego_vehicle.id}_oa_simulation"
         lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
         plot_oa_simulation(
-            self.__map_reader,
+            self.__map_reader.map_data,
             self.__plot_simulation_data.actual_trajectory,
             self.__plot_simulation_data.planned_trajectories,
             self.__plot_simulation_data.planned_controls,
@@ -226,7 +223,7 @@ class MotionPlanner(object):
         )
         return np.sqrt(v_0_x**2 + v_0_y**2)
 
-    def make_local_params(self, frame, ovehicles):
+    def make_local_params(self, frame):
         """Get the linearized bicycle model using the vehicle's
         immediate orientation."""
         params = util.AttrDict()
@@ -324,8 +321,7 @@ class MotionPlanner(object):
         segment_length = self.__road_segs.segment_length
         v_lim = self.__ego_vehicle.get_speed_limit()
         go_forward = int(
-            (0.75*v_lim*self.__steptime*self.__prediction_horizon) \
-                // segment_length + 1
+            (0.75*v_lim*self.__steptime*self.__control_horizon) // segment_length + 1
         )
         pos0 = params.initial_state.world[:2]
         closest_idx = np.argmin(
@@ -350,51 +346,49 @@ class MotionPlanner(object):
             self.__plot_segs_polytopes(params, segs_polytopes, goal)
         return segs_polytopes, goal, seg_psi_bounds
 
-    def compute_dyamics_constraints(self, params, v, delta):
+    def compute_dyamics_constraints(self, params, v):
         """Set velocity magnitude constraints.
         Usually street speed limits are 30 km/h == 8.33.. m/s.
         Speed limits can be 30, 40, 60, 90 km/h
 
         Parameters
         ==========
+        params : util.AttrDict
         v : np.array of docplex.mp.vartype.VarType
         """
         max_v = self.__ego_vehicle.get_speed_limit() # is m/s
-        max_delta = self.__params.max_delta
         constraints = []
-        constraints.extend([ z <= max_v      for z in v ])
-        constraints.extend([ z >= 0          for z in v ])
-        constraints.extend([z  <=  max_delta for z in delta])
-        constraints.extend([z  >= -max_delta for z in delta])
+        constraints.extend([ z <= max_v for z in v ])
+        constraints.extend([ z >= 0     for z in v ])
         return constraints
 
-    def do_highlevel_control(self, params, ovehicles):
+    def do_highlevel_control(self, params):
         """Decide parameters."""
-        segs_polytopes, goal, seg_psi_bounds = self.compute_segs_polytopes_and_goal(params)
+        segs_polytopes, goal, seg_psi_bounds = self.compute_segs_polytopes_and_goal(
+                params)
 
         """Apply motion planning problem"""
         n_segs = len(segs_polytopes)
-        L, K, Gamma, nu, nx = self.__params.L, params.K, \
-                params.Gamma, params.nu, params.nx
+        Gamma, nu, nx = params.Gamma, params.nu, params.nx
         T = self.__control_horizon
-        max_a, min_a, max_delta_chg = self.__params.max_a, self.__params.min_a, \
-                self.__params.max_delta_chg
+        max_a, min_a,  = self.__params.max_a, self.__params.min_a
+        max_delta = self.__params.max_delta
         model = docplex.mp.model.Model(name="proposed_problem")
-        min_u = np.vstack((np.full(T, min_a), np.full(T, -max_delta_chg))).T.ravel()
-        max_u = np.vstack((np.full(T, max_a), np.full(T,  max_delta_chg))).T.ravel()
+        min_u = np.vstack((np.full(T, min_a), np.full(T, -max_delta))).T.ravel()
+        max_u = np.vstack((np.full(T, max_a), np.full(T,  max_delta))).T.ravel()
         # Slack variables for control
         u = np.array(
             model.continuous_var_list(nu*T, lb=min_u, ub=max_u, name='u'), dtype=object
         )
-        # State variables
+        # State variables x, y, psi, v
         X = (params.initial_rollout.local + util.obj_matmul(Gamma, u)).reshape(T + 1, nx)
         X = params.transform(X)
         X = X[1:]
-        # Control variables
+        # Control variables a, delta
         U = u.reshape(T, nu)
 
         """Apply motion dynamics constraints"""
-        model.add_constraints(self.compute_dyamics_constraints(params, X[:, 3], X[:, 4]))
+        model.add_constraints(self.compute_dyamics_constraints(params, X[:, 3]))
 
         """Apply road boundary constraints"""
         if self.road_boundary_constraints:
@@ -475,28 +469,16 @@ class MotionPlanner(object):
         """use control input next round for warm starting."""
         # self.U_warmstarting = ctrl_result.U_star
 
-        """Get trajectory and velocity"""
-        trajectory = []
-        velocity = []
-        X = np.concatenate((params.initial_state.world[None], ctrl_result.X_star))
-        n_steps = X.shape[0]
-        for t in range(1, n_steps):
-            x, y, yaw = X[t, :3]
-            y = -y # flip about x-axis again to move back to UE coordinates
-            # flip about x-axis again to move back to UE coordinates
-            yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
-            transform = carla.Transform(
-                carla.Location(x=x, y=y), carla.Rotation(yaw=yaw)
-            )
-            trajectory.append(transform)
-            velocity.append(X[t, 3])
-
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""
+            X = np.concatenate((params.initial_state.world[None], ctrl_result.X_star))
             self.__plot_simulation_data.planned_trajectories[frame] = X
             self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
-            self.__plot_simulation_data.goals[frame] = ctrl_result.goal
-        return trajectory, velocity
+
+        """Get trajectory and velocity"""
+        angles = ctrl_result.X_star[:, 2]
+        speeds = ctrl_result.X_star[:, 3]
+        return speeds, angles
 
     def do_first_step(self, frame):
         self.__first_frame = frame
@@ -525,11 +507,9 @@ class MotionPlanner(object):
                 """Initially collect data without doing any control to the vehicle."""
                 pass
             elif (frame_id - self.__n_burn_interval) % self.__step_horizon == 0:
-                trajectory, velocity = self.__compute_prediction_controls(frame)
+                speeds, angles = self.__compute_prediction_controls(frame)
                 self.__local_planner.set_plan(
-                    trajectory,
-                    self.__scene_config.record_interval,
-                    velocity=velocity
+                    speeds, angles, self.__scene_config.record_interval
                 )
             if self.plot_simulation:
                 """Save actual trajectory for final plotting"""
@@ -537,12 +517,11 @@ class MotionPlanner(object):
                     self.__ego_vehicle, flip_y=True
                 )
                 payload = np.array([
-                    payload[0], payload[1], payload[13],
-                    self.get_current_velocity(),
+                    payload[0], payload[1], payload[13], self.get_current_velocity(),
                 ])
                 self.__plot_simulation_data.actual_trajectory[frame] = payload
                 self.__plot_simulation_data.goals[frame] = self.get_goal()
 
         if not control:
-            control = self.__local_planner.run_step()
+            control = self.__local_planner.step()
         self.__ego_vehicle.apply_control(control)

@@ -1,9 +1,16 @@
+import enum
+
 import utility as util
 
 CARLA_HOST = '127.0.0.1'
 CARLA_PORT = 2000
 CARLA_MAP = 'Town03'
 SEED = 1
+
+class LoopEnum(enum.Enum):
+    """Indicator for toggling driving open/closed loop"""
+    OPEN_LOOP = 0
+    CLOSED_LOOP = 1
 
 MODEL_SPEC_1 = util.AttrDict(
         path="experiments/nuScenes/models/20210621/models_19_Mar_2021_22_14_19_int_ee_me_ph8",
