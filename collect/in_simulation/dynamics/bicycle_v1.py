@@ -1,11 +1,6 @@
-"""
-TODO: DEPRECATED. Delete after refactoring.
-"""
-
 import math
 
 import numpy as np
-import control
 
 sin = math.sin
 cos = math.cos
@@ -40,37 +35,6 @@ def bicycle_kinematics(t, x, u, params):
         u_1, # dot v
         u_2, # dot delta
     ])
-
-def compute_nonlinear_dynamical_states(initial_state, T, Ts, U, l_r=0.5, L=1.0):
-    """
-    Parameters
-    ==========
-    initial_state : ndarray
-        Initial state [x_0, y_0, psi_0, v_0, delta_0].
-    T : int
-        Timesteps.
-    Ts : float
-        Step size in seconds.
-    U : ndarray
-        Control inputs of shape (T, 2) [u_1, u_2]
-    
-    Returns
-    =======
-    ndarray
-        Trajectory from control of shape (T + 1, 5) with rows [x, y, psi, v, delta].
-    """
-    timestamps = np.linspace(0, Ts*T, T + 1)
-    mock_inputs = np.concatenate((U, np.array([0, 0])[None]), axis=0).T
-    io_bicycle_kinematics = control.NonlinearIOSystem(
-                bicycle_kinematics, None,
-                inputs=('u_1', 'u_2'),
-                outputs=('x', 'y', 'psi', 'v', 'delta'),
-                states=('x', 'y', 'psi', 'v', 'delta'),
-                params={'l_r': l_r, 'L': L},
-                name='bicycle_kinematics')
-    _, states = control.input_output_response(
-            io_bicycle_kinematics, timestamps, mock_inputs, initial_state)
-    return states.T
 
 def get_state_matrix(x, y, psi, v, delta, l_r=0.5, L=1.0):
     beta   = get_beta(delta, l_r=l_r, L=L)

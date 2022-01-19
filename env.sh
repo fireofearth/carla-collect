@@ -5,13 +5,12 @@ export APPROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Set CARLA Simulatory directory manually
 CARLANAME=carla-0.9.11
-#CARLANAME=carla-0.9.12
 export CARLA_DIR=/home/$(whoami)/src/$CARLANAME
 # CPLEX is optional: it is only used for in-simulation code
 export CPLEX_STUDIO_DIR1210=/opt/ibm/ILOG/CPLEX_Studio1210
 
 # Enable the Python environment
-conda activate trajectron-cplex
+source py37trajectron/bin/activate
 
 # Automatic path linking
 export PYCARLA=$CARLA_DIR/PythonAPI/carla/dist/$CARLANAME-py3.7-linux-x86_64.egg

@@ -17,10 +17,7 @@ from collect.in_simulation.standalone.v1 import MotionPlanner
 
 """Just test the motion controller itself without the collision avoidance.
 
-pytest \
-    --log-cli-level=INFO \
-    --capture=tee-sys \
-    tests/test_standalone.py::test_Town03_scenario[intersection_3]
+pytest tests/10Hz/test_standalone.py::test_Town03_scenario[intersection_3]
 """
 
 class LoopEnum(enum.Enum):

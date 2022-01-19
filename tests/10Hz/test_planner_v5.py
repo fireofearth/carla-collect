@@ -19,10 +19,7 @@ from collect.generate.scene.v3_2.trajectron_scene import (
 
 """Test the midlevel controller v5.
 
-pytest \
-    --log-cli-level=INFO \
-    --capture=tee-sys \
-    tests/test_controller_v5.py::test_Town03_scenario[intersection_3-OAAgent_ph4_ch1_np100]
+pytest tests/10Hz/test_planner_v5.py::test_Town03_scenario[intersection_3-OAAgent_ph6_ch1_np100]
 """
 
 class OAAgent(MidlevelAgent):

@@ -463,7 +463,6 @@ def plot_oa_simulation_2(scene, actual_trajectory, planned_trajectories,
 
 ################ plot_oa_simulation
 
-
 def plot_oa_simulation_0(scene, actual_trajectory, planned_trajectories,
         planned_controls, road_segs, ego_bbox, step_horizon, step_size,
         filename="oa_simulation", road_boundary_constraints=True):

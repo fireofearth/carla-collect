@@ -376,6 +376,52 @@ SCENARIO_at555_right_turn035 = pytest.param(
     id="at555_right_turn035"
 )
 
+enter_rad = math.radians(-179.705383)
+CONTROLS_vary1 = util.AttrDict(
+    target_speeds=[5.55 - i*(5.55/10) for i in range(0, 11)] + [5.55 - i*(5.55/10) for i in range(9, 0, -1)],
+    target_angles=[enter_rad + i*0.2 for i in range(0, 20)],
+    step_period=10
+)
+SCENARIO_vary1 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=85,
+        spawn_shift=None,
+        n_burn_steps=100,
+        run_steps=200,
+        controls=CONTROLS_vary1,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 100),
+                control=carlautil.create_gear_control(throttle=0.5)
+            )
+        ],
+    ),
+    id="vary1"
+)
+
+enter_rad = math.radians(-179.705383)
+CONTROLS_vary2 = util.AttrDict(
+    target_speeds=[5.55 - i*(5.55/10) for i in range(0, 11)] + [5.55 - i*(5.55/10) for i in range(9, 0, -1)],
+    target_angles=[enter_rad + i*0.35 for i in range(0, 20)],
+    step_period=10
+)
+SCENARIO_vary2 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=85,
+        spawn_shift=None,
+        n_burn_steps=100,
+        run_steps=200,
+        controls=CONTROLS_vary2,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 100),
+                control=carlautil.create_gear_control(throttle=0.5)
+            )
+        ],
+    ),
+    id="vary2"
+)
+
 @pytest.mark.parametrize(
     "scenario_params",
     [
@@ -388,7 +434,9 @@ SCENARIO_at555_right_turn035 = pytest.param(
         SCENARIO_left096,
         SCENARIO_left_turn035,
         SCENARIO_at555_left_turn035,
-        SCENARIO_at555_right_turn035
+        SCENARIO_at555_right_turn035,
+        SCENARIO_vary1,
+        SCENARIO_vary2,
     ]
 )
 def test_Town03_scenario(scenario_params, carla_Town03_synchronous):

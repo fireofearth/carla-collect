@@ -2,7 +2,6 @@
 v6 is a modification of v2_2 that does original approach on curved road boundaries
 and uses LTI bicycle model linearized around origin.
 
-    - Still uses double integrator as model for ego vehicle.
     - Applies curved road boundaries using segmented polytopes.
 """
 

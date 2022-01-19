@@ -171,10 +171,7 @@ class MapQuerier(ABC):
     """Abstract class to keep track of properties in a map and
     used to query whether an actor is in a certain part
     (i.e. intersection, hill) of the map for the sake of
-    labeling samples.
-    
-    TODO: refactor to use MapDataExtractor to get map data.
-    """
+    labeling samples."""
 
     # used by __extract_polygons_and_lines()
     EXTRACT_PRECISION = 0.05

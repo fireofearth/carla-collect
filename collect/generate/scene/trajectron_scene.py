@@ -1,4 +1,6 @@
 """Based on trajectron-plus-plus/experiments/nuScenes/process_data.py
+
+DEPRECATED
 """
 
 import sys
