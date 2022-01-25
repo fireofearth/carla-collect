@@ -770,7 +770,7 @@ class MotionPlanner(object):
              # flip about x-axis again to move back to UE coordinates
             # yaw = np.arctan2(X[t, 1] - X[t - 1, 1], X[t, 0] - X[t - 1, 0])
             yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
-            transform = carla.Transform(carla.Location(x=x, y=y),carla.Rotation(yaw=yaw))
+            transform = carla.Transform(carla.Location(x=x, y=y), carla.Rotation(yaw=yaw))
             trajectory.append(transform)
             velocity.append(X[t, 3])
 

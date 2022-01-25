@@ -1,9 +1,11 @@
 """PID controller based on PythonAPI.
 Fixes problems with controllers v1, v1_1.
-Piecewise constant reference trajectory."""
+Improves upon v2 by adding piecewise linear reference trajectory.
+"""
 
 import collections
 import math
+import copy
 
 import numpy as np
 
@@ -209,7 +211,6 @@ class VehiclePIDController(object):
         self.__step_idx += 1
         return control
 
-
     def set_plan(self, target_speeds, target_angles, step_period):
         """Given a trajectory consisting of heading angle and
         velocities, use lateral and longitudinal PID controllers
@@ -218,19 +219,29 @@ class VehiclePIDController(object):
         Parameters
         ==========
         target_speeds : list of float
-            Target speeds in m/s.
+            Target speeds in m/s for the next few consecutive steps.
         target_angles : list of float
-            Target angles in radians.
+            Target angles in radians for the next few consecutive steps.
             The lists `target_speed` and `target_angle` should have the same length.
         step_period : int
             The fixed number of steps between two consecutive points in the trajectory.
             Each step takes `carla.WorldSettings.fixed_delta_seconds` time.
         """
-        n_steps = len(target_speeds)
-        self.step_to_speed = [
-            target_speeds[step] for step in range(n_steps) for _ in range(step_period)
-        ]
-        self.step_to_angle = [
-            target_angles[step] for step in range(n_steps) for _ in range(step_period)
-        ]
-        self.__step_idx = 0
+        speed = carlautil.actor_to_speed(self.__vehicle)
+        _, heading, _ = carlautil.to_rotation_ndarray(self.__vehicle, flip_y=False)
+        target_speeds = [speed] + target_speeds
+        target_angles = [heading] + target_angles
+        self.step_to_speed = []
+        self.step_to_angle = []
+        n_steps = len(target_speeds) - 1
+        for step in range(n_steps):
+            for substep in range(step_period):
+                self.step_to_speed.append(
+                    target_speeds[step] + (substep/step_period)*(target_speeds[step+1] - target_speeds[step])
+                )
+                self.step_to_angle.append(
+                    target_angles[step] + (substep/step_period)*(target_angles[step+1] - target_angles[step])
+                )
+        self.step_to_speed.append(target_speeds[-1])
+        self.step_to_angle.append(target_angles[-1])
+        self.__step_idx = 1

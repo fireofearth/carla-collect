@@ -40,6 +40,7 @@ from ...lowlevel.v2 import VehiclePIDController
 # Local libraries
 import carla
 import utility as util
+import utility.npu
 import carlautil
 import carlautil.debug
 
@@ -79,7 +80,7 @@ class MotionPlanner(object):
         self.__road_seg_starting, self.__road_seg_enclosure, self.__road_seg_params \
                 = self.__map_reader.road_segment_enclosure_from_actor(self.__ego_vehicle)
         self.__road_seg_starting[1] *= -1 # need to flip about x-axis
-        self.__road_seg_starting[2] = util.reflect_radians_about_x_axis(
+        self.__road_seg_starting[2] = util.npu.reflect_radians_about_x_axis(
                 self.__road_seg_starting[2]) # need to flip about x-axis
         self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
         # __goal
@@ -476,7 +477,7 @@ class MotionPlanner(object):
             self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
 
         """Get trajectory and velocity"""
-        angles = ctrl_result.X_star[:, 2]
+        angles = util.npu.reflect_radians_about_x_axis(ctrl_result.X_star[:, 2])
         speeds = ctrl_result.X_star[:, 3]
         return speeds, angles
 

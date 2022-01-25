@@ -10,6 +10,9 @@ import utility as util
 import carla
 import carlautil
 
+"""
+pytest tests/20Hz/test_api.py::test_Town03_scenario[forward]
+"""
 
 class ScenarioParameters(object):
     """Scenario parameters.

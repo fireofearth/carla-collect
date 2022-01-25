@@ -44,7 +44,9 @@ PADDING = 30
 def plot_oa_simulation_timestep(
     map_data, actual_trajectory, frame_idx, planned_frame, planned_trajectory,
     planned_control, goal, road_segs, ego_bbox, step_horizon, steptime, n_frames,
-    filename="oa_simulation", road_boundary_constraints=True
+    filename="oa_simulation",
+    road_boundary_constraints=True,
+    show_gt=False
 ):
     """Helper function of plot_oa_simulation()"""
     planned_xy = planned_trajectory[:, :2]
@@ -59,13 +61,17 @@ def plot_oa_simulation_timestep(
     max_x, max_y = np.max(planned_xy, axis=0)
     x_mid, y_mid = (max_x + min_x) / 2, (max_y + min_y) / 2
     extent = (x_mid - PADDING, x_mid + PADDING, y_mid - PADDING, y_mid + PADDING)
-    gt_planned_trajectory = compute_nonlinear_dynamical_states(
-        planned_trajectory[0], planned_trajectory.shape[0] - 1, steptime,
-        planned_control, l_r=0.5*ego_bbox[0], L=ego_bbox[0]
-    )
-    gt_planned_xy = gt_planned_trajectory[:, :2]
-    gt_planned_psi = gt_planned_trajectory[:, 2]
-    gt_planned_v = gt_planned_trajectory[:, 3]
+    gt_planned_xy = None
+    gt_planned_psi = None
+    gt_planned_v = None
+    if show_gt:
+        gt_planned_trajectory = compute_nonlinear_dynamical_states(
+            planned_trajectory[0], planned_trajectory.shape[0] - 1, steptime,
+            planned_control, l_r=0.5*ego_bbox[0], L=ego_bbox[0]
+        )
+        gt_planned_xy = gt_planned_trajectory[:, :2]
+        gt_planned_psi = gt_planned_trajectory[:, 2]
+        gt_planned_v = gt_planned_trajectory[:, 3]
 
     # Generate plots for map, state and inputs
     fig, axes = plt.subplots(3, 2, figsize=(12, 12))
@@ -82,7 +88,7 @@ def plot_oa_simulation_timestep(
     "EV bounding box at current position"
     position = actual_trajectory[frame_idx, :2]
     heading = actual_trajectory[frame_idx, 2]
-    vertices = util.vertices_from_bbox(position, heading, ego_bbox)
+    vertices = util.npu.vertices_from_bbox(position, heading, ego_bbox)
     bb = patches.Polygon(vertices.reshape((-1,2,)),
             closed=True, color="k", fc=util.plu.modify_alpha("black", 0.2))
     ax.add_patch(bb)
@@ -90,12 +96,11 @@ def plot_oa_simulation_timestep(
     """Plot EV planned trajectory. This is computed from CPLEX using linearized
     discrete-time vehicle dynamics."""
     ax.plot(*planned_xy.T, "--bo", zorder=20, markersize=2)
-    # TODO: show bounding box at last planned position
 
     """Plot EV planned trajectory. This is the ground-truth non-linear vehicle dyamics
     computed by solving the model with ZOH and the controls computed from CPLEX."""
-    ax.plot(*gt_planned_xy.T, "--go", zorder=20, markersize=2)
-    # TODO: show bounding box at last planned position
+    if show_gt:
+        ax.plot(*gt_planned_xy.T, "--go", zorder=20, markersize=2)
 
     """Plot EV actual trajectory.
     Plans are made in current frame, and carried out next frame."""
@@ -112,31 +117,48 @@ def plot_oa_simulation_timestep(
     ax.set_title(f"frame {frame_idx + 1}")
     ax.set_aspect('equal')
 
-    """Plot v, which is the vehicle speed."""
+    """Plot bounding boxes along with trajectories on xy-plane."""
     ax = axes[1]
+    ax.plot(*planned_xy.T, "--bo", zorder=20, markersize=2)
+    ax.plot(*actual_xy.T, '-ko')
+    vertices = util.npu.vertices_of_bboxes(actual_xy, actual_psi, ego_bbox)
+    for v in vertices:
+        bb = patches.Polygon(v,
+                closed=True, color="k", fc=util.plu.modify_alpha("black", 0.2))
+        ax.add_patch(bb)
+    vertices = util.npu.vertices_of_bboxes(planned_xy, planned_psi, ego_bbox)
+    for v in vertices:
+        bb = patches.Polygon(v,
+                closed=True, color="b", fc=util.plu.modify_alpha("blue", 0.2))
+        ax.add_patch(bb)
+
+    """Plot v, which is the vehicle speed."""
+    ax = axes[2]
     ax.plot(range(1, n_frames + 1), actual_v, "-k.", label="actual")
     ax.plot(range(idx, idx + planned_v.size), planned_v, "-b.", label="linear plan")
-    ax.plot(
-        range(idx, idx + gt_planned_v.size),
-        gt_planned_v, "-g.", label="non-linear plan"
-    )
+    if show_gt:
+        ax.plot(
+            range(idx, idx + gt_planned_v.size),
+            gt_planned_v, "-g.", label="non-linear plan"
+        )
     ax.set_title("$v$ speed of c.g., m/s")
     ax.set_ylabel("m/s")
 
     """Plot psi, which is the vehicle longitudinal angle in global coordinates."""
-    ax = axes[2]
+    ax = axes[3]
     ax.plot(range(1, n_frames + 1), actual_psi, "-k.", label="actual")
     ax.plot(range(idx, idx + planned_psi.size), planned_psi, "-b.", label="linear plan")
-    ax.plot(
-        range(idx, idx + gt_planned_psi.size),
-        gt_planned_psi, "-g.", label="non-linear plan"
-    )
+    if show_gt:
+        ax.plot(
+            range(idx, idx + gt_planned_psi.size),
+            gt_planned_psi, "-g.", label="non-linear plan"
+        )
     ax.set_title("$\psi$ longitudinal angle, radians")
     ax.set_ylabel("rad")
 
     """Plot delta, which is the turning angle.
     Not applicable."""
-    axes[3].set_visible(False)
+    # axes[1].set_visible(False)
 
     """Plot a, which is acceleration control input"""
     ax = axes[4]
@@ -150,9 +172,10 @@ def plot_oa_simulation_timestep(
     ax.set_title("$\delta$ steering input, radians")
     # ax.set_ylabel("rad")
 
-    for ax in axes[1:4]:
-        ax.set_xlabel("time, s")
+    for ax in axes[2:]:
+        ax.set_xlabel("timestep")
         ax.grid()
+    for ax in axes[2:4]:
         ax.legend()
     
     fig.tight_layout()

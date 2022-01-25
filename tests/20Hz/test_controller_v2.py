@@ -5,12 +5,17 @@ import math
 import pytest
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 
 import utility as util
 import carla
 import carlautil
 
-from collect.in_simulation.lowlevel.v2 import VehiclePIDController
+from collect.in_simulation.lowlevel.v3 import VehiclePIDController
+
+"""
+pytest tests/20Hz/test_controller_v2.py::test_Town03_scenario[top555]
+"""
 
 class ScenarioParameters(object):
     """Scenario parameters.
@@ -48,7 +53,7 @@ class ScenarioParameters(object):
         self.controls = controls
 
 
-def scenario(scenario_params, carla_synchronous):
+def scenario(scenario_params, carla_synchronous, request):
     client, world, carla_map, traffic_manager = carla_synchronous
     ego_vehicle = None
 
@@ -93,6 +98,19 @@ def scenario(scenario_params, carla_synchronous):
         control_steers    = []
         control_throttles = []
         control_brakes    = []
+        def add_stats():
+            # save the speed, heading and control values
+            speed = carlautil.actor_to_speed(ego_vehicle)
+            _, heading, _ = carlautil.to_rotation_ndarray(ego_vehicle)
+            speeds.append(speed)
+            headings.append(heading)
+            control = ego_vehicle.get_control()
+            control_steers.append(control.steer)
+            control_throttles.append(control.throttle)
+            control_brakes.append(control.brake)
+        add_stats()
+
+        # logging.info(ego_vehicle.get_transform().rotation.yaw)
         controller.set_plan(
             scenario_params.controls.target_speeds,
             scenario_params.controls.target_angles,
@@ -102,15 +120,7 @@ def scenario(scenario_params, carla_synchronous):
             control = controller.step()
             ego_vehicle.apply_control(control)
             world.tick()
-            
-            # After doing control, get the
-            speed = carlautil.actor_to_speed(ego_vehicle)
-            _, heading, _ = carlautil.to_rotation_ndarray(ego_vehicle)
-            speeds.append(speed)
-            headings.append(heading)
-            control_steers.append(control.steer)
-            control_throttles.append(control.throttle)
-            control_brakes.append(control.brake)
+            add_stats()
         
         ##########
         # Plotting
@@ -131,10 +141,14 @@ def scenario(scenario_params, carla_synchronous):
         axes[3].plot(timesteps, control_steers, "b", label="steer")
         axes[3].set_title("Steer input")
         for ax in axes:
+            # loc = ticker.MultipleLocator(0.5)
+            # ax.xaxis.set_major_locator(loc)
             ax.legend()
             ax.set_xlabel("time s")
             ax.grid(True)
-        plt.show()
+        fig.tight_layout()
+        fig.savefig(os.path.join("out", f"{request.node.callspec.id}.png"))
+        fig.clf()
     
     finally:
         if ego_vehicle:
@@ -149,6 +163,8 @@ Out of target speeds 8.33.. m/s, 5.55.. m/s, 2.77.. m/s, the speed
 When testing PID controller on speeds 8.33.. m/s, 5.55.. m/s, 2.77.. m/s
 the K_P = 0.74, K_D = 0.07, K_I = 0 brings vehicle closest to target
 velocity without oscillation, when no steering is involved.
+
+Control input values for PID controller are in the Unreal Engine coordinate system.
 """
 
 enter_rad = math.radians(-179.705383)
@@ -376,6 +392,33 @@ SCENARIO_at555_right_turn035 = pytest.param(
     id="at555_right_turn035"
 )
 
+enter_rad = math.radians(89.831024)
+CONTROLS_vary_speed1 = util.AttrDict(
+    target_speeds=[5.55 - i*(5.55/10) for i in range(0, 6)] \
+        + [5.55 - i*(5.55/10) for i in range(4, 0, -1)] \
+        + [5.55 - i*(5.55/10) for i in range(0, 6)] \
+        + [5.55 - i*(5.55/10) for i in range(4, 0, -1)],
+    target_angles=[enter_rad]*20,
+    step_period=10
+)
+SCENARIO_vary_speed1 = pytest.param(
+    # Slow down and speed up.
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        spawn_shift=None,
+        n_burn_steps=100,
+        run_steps=200,
+        controls=CONTROLS_vary_speed1,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 100),
+                control=carlautil.create_gear_control(throttle=0.5)
+            )
+        ],
+    ),
+    id="vary_speed1"
+)
+
 enter_rad = math.radians(-179.705383)
 CONTROLS_vary1 = util.AttrDict(
     target_speeds=[5.55 - i*(5.55/10) for i in range(0, 11)] + [5.55 - i*(5.55/10) for i in range(9, 0, -1)],
@@ -435,9 +478,10 @@ SCENARIO_vary2 = pytest.param(
         SCENARIO_left_turn035,
         SCENARIO_at555_left_turn035,
         SCENARIO_at555_right_turn035,
+        SCENARIO_vary_speed1,
         SCENARIO_vary1,
         SCENARIO_vary2,
     ]
 )
-def test_Town03_scenario(scenario_params, carla_Town03_synchronous):
-    scenario(scenario_params, carla_Town03_synchronous)
+def test_Town03_scenario(scenario_params, carla_Town03_synchronous, request):
+    scenario(scenario_params, carla_Town03_synchronous, request)
