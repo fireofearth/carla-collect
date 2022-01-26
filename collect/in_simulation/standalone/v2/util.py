@@ -109,14 +109,6 @@ def plot_oa_simulation_timestep(
     ax.plot(*actual_xy[idx:(idx + step_horizon)].T, '-o', color="orange")
     ax.plot(*actual_xy[(idx + step_horizon):].T, '-ko')
 
-    "Configure overhead plot."
-    ax.set_xlim([extent[0], extent[1]])
-    ax.set_ylim([extent[2], extent[3]])
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title(f"frame {frame_idx + 1}")
-    ax.set_aspect('equal')
-
     """Plot bounding boxes along with trajectories on xy-plane."""
     ax = axes[1]
     ax.plot(*planned_xy.T, "--bo", zorder=20, markersize=2)
@@ -131,6 +123,15 @@ def plot_oa_simulation_timestep(
         bb = patches.Polygon(v,
                 closed=True, color="b", fc=util.plu.modify_alpha("blue", 0.2))
         ax.add_patch(bb)
+
+    "Configure overhead plot."
+    for ax in axes[:2]:
+        ax.set_xlim([extent[0], extent[1]])
+        ax.set_ylim([extent[2], extent[3]])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"frame {frame_idx + 1}")
+        ax.set_aspect('equal')
 
     """Plot v, which is the vehicle speed."""
     ax = axes[2]
@@ -162,20 +163,25 @@ def plot_oa_simulation_timestep(
 
     """Plot a, which is acceleration control input"""
     ax = axes[4]
-    ax.plot(range(idx, idx + planned_a.size), planned_a, "-.", color="orange")
+    ax.plot(
+        range(idx, idx + planned_a.size), planned_a,
+        "-.", color="orange", label="control plan"
+    )
     ax.set_title("$a$ acceleration input, $m/s^2$")
     # ax.set_ylabel("$m/s^2$")
 
     """Plot delta, which is steering control input"""
     ax = axes[5]
-    ax.plot(range(idx, idx + planned_delta.size), planned_delta, "-.", color="orange")
+    ax.plot(
+        range(idx, idx + planned_delta.size), planned_delta,
+        "-.", color="orange", label="control plan"
+    )
     ax.set_title("$\delta$ steering input, radians")
     # ax.set_ylabel("rad")
 
     for ax in axes[2:]:
         ax.set_xlabel("timestep")
         ax.grid()
-    for ax in axes[2:4]:
         ax.legend()
     
     fig.tight_layout()
@@ -185,7 +191,7 @@ def plot_oa_simulation_timestep(
 
 def plot_oa_simulation(
     map_data, actual_trajectory, planned_trajectories, planned_controls, goals,
-    road_segs, ego_bbox, step_horizon, steptime, filename="oa_simulation",
+    lowlevel, road_segs, ego_bbox, step_horizon, steptime, filename="oa_simulation",
     road_boundary_constraints=True
 ):
     """Plot to compare between actual trajectory and planned trajectories.
@@ -233,3 +239,70 @@ def plot_oa_simulation(
             frames.size, filename=filename,
             road_boundary_constraints=road_boundary_constraints
         )
+    
+    # plot PID controller / actuation
+    _, lowlevel = util.unzip([i for i in lowlevel.items()])
+    m_speed = util.map_to_ndarray(lambda x: x.measurement.speed, lowlevel)
+    r_speed = util.map_to_ndarray(lambda x: x.reference.speed, lowlevel)
+    m_angle = util.map_to_ndarray(lambda x: x.measurement.angle, lowlevel)
+    r_angle = util.map_to_ndarray(lambda x: x.reference.angle, lowlevel)
+    m_angle = util.npu.warp_radians_neg_pi_to_pi(m_angle)
+    r_angle = util.npu.warp_radians_neg_pi_to_pi(r_angle)
+    c_throttle = util.map_to_ndarray(lambda x: x.control.throttle, lowlevel)
+    c_brake = util.map_to_ndarray(lambda x: x.control.brake, lowlevel)
+    c_steer = util.map_to_ndarray(lambda x: x.control.steer, lowlevel)
+    pe_speed = util.map_to_ndarray(lambda x: x.error.speed.pe, lowlevel)
+    ie_speed = util.map_to_ndarray(lambda x: x.error.speed.ie, lowlevel)
+    de_speed = util.map_to_ndarray(lambda x: x.error.speed.de, lowlevel)
+    pe_angle = util.map_to_ndarray(lambda x: x.error.angle.pe, lowlevel)
+    ie_angle = util.map_to_ndarray(lambda x: x.error.angle.ie, lowlevel)
+    de_angle = util.map_to_ndarray(lambda x: x.error.angle.de, lowlevel)
+
+    fig, axes = plt.subplots(3, 2, figsize=(20, 20))
+    axes = axes.T.ravel()
+
+    steptimes = np.arange(len(lowlevel)) * 0.05
+    ax = axes[0]
+    ax.plot(steptimes, m_speed, "-g.", label="measured speed")
+    ax.plot(steptimes, r_speed, "-", marker='.', color="orange", label="reference speed")
+    ax.set_title("speed")
+    ax.set_ylabel("m/s")
+
+    ax = axes[1]
+    ax.plot(steptimes, pe_speed, "-r.", label="prop. error")
+    ax.plot(steptimes, ie_speed, "-b.", label="integral error")
+    ax.plot(steptimes, de_speed, "-g.", label="derivative error")
+    ax.set_title("speed error")
+    ax.set_ylim([-10, 10])
+
+    ax = axes[2]
+    ax.plot(steptimes, c_throttle, "-b.", label="applied throttle")
+    ax.plot(steptimes, c_brake, "-r.", label="applied throttle")
+    ax.set_title("longitudinal control")
+
+    ax = axes[3]
+    ax.plot(steptimes, m_angle, "-g.", label="measured angle")
+    ax.plot(steptimes, r_angle, "-", marker='.', color="orange", label="reference angle")
+    ax.set_title("angle")
+    ax.set_ylabel("rad")
+
+    ax = axes[4]
+    ax.plot(steptimes, pe_angle, "-r.", label="prop. error")
+    ax.plot(steptimes, ie_angle, "-b.", label="integral error")
+    ax.plot(steptimes, de_angle, "-g.", label="derivative error")
+    ax.set_ylim([-10, 10])
+    ax.set_title("angle error")
+
+    ax = axes[5]
+    ax.plot(steptimes, c_steer, "-b.", label="applied steer")
+    ax.set_title("lateral control")
+
+    for ax in axes:
+        ax.grid()
+        ax.legend()
+        ax.set_xlabel("seconds s")
+
+    fig.tight_layout()
+    fig.savefig(os.path.join('out', f"{filename}_pid.png"))
+    fig.clf()
+

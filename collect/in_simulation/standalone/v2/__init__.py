@@ -35,7 +35,7 @@ from ...dynamics.bicycle_v2 import (
     get_state_matrix, get_input_matrix,
     get_output_matrix, get_feedforward_matrix
 )
-from ...lowlevel.v2 import VehiclePIDController
+from ...lowlevel.v3 import VehiclePIDController
 
 # Local libraries
 import carla
@@ -54,7 +54,7 @@ class MotionPlanner(object):
         params.M_big = 1000
         # Control variable for solver, setting max/min acceleration
         # TODO: hardcoded
-        params.max_a = 2
+        params.max_a = 1
         params.min_a = -7
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -177,7 +177,8 @@ class MotionPlanner(object):
                 actual_trajectory=collections.OrderedDict(),
                 planned_trajectories=collections.OrderedDict(),
                 planned_controls=collections.OrderedDict(),
-                goals=collections.OrderedDict()
+                goals=collections.OrderedDict(),
+                lowlevel=collections.OrderedDict()
             )
 
     def get_vehicle_state(self):
@@ -204,6 +205,7 @@ class MotionPlanner(object):
             self.__plot_simulation_data.planned_trajectories,
             self.__plot_simulation_data.planned_controls,
             self.__plot_simulation_data.goals,
+            self.__plot_simulation_data.lowlevel,
             self.__road_segs,
             np.array([lon, lat]),
             self.__step_horizon,
@@ -453,6 +455,7 @@ class MotionPlanner(object):
             model.parameters.mip.display = 2
             s = model.solve(log_output=True)
         else:
+            model.parameters.mip.display = 0
             model.solve()
         # model.print_solution()
 
@@ -523,6 +526,10 @@ class MotionPlanner(object):
                 self.__plot_simulation_data.actual_trajectory[frame] = payload
                 self.__plot_simulation_data.goals[frame] = self.get_goal()
 
+
         if not control:
             control = self.__local_planner.step()
         self.__ego_vehicle.apply_control(control)
+        if self.plot_simulation:
+            payload = self.__local_planner.get_current()
+            self.__plot_simulation_data.lowlevel[frame] = payload

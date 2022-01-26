@@ -182,6 +182,7 @@ CONTROLS_intersection_4_1 = [
 
 SCENARIO_intersection_4_1 = pytest.param(
     # left turn of low curvature to angled road
+    # begin motion planning while turning
     ScenarioParameters(
             ego_spawn_idx=85,
             n_burn_interval=26,
@@ -198,6 +199,17 @@ CONTROLS_intersection_3 = [
         control=carla.VehicleControl(throttle=0.3)
     ),
 ]
+SCENARIO_intersection_2 = pytest.param(
+    # move straight through intersection
+    ScenarioParameters(
+            ego_spawn_idx=85,
+            n_burn_interval=12,
+            run_interval=13,
+            controls=CONTROLS_intersection_3,
+            turn_choices=[0],
+            max_distance=70),
+    id="intersection_2"
+)
 SCENARIO_intersection_3 = pytest.param(
     # left turn of low curvature to angled road
     ScenarioParameters(
@@ -294,6 +306,7 @@ VARIABLES_ch6_open = pytest.param(
 @pytest.mark.parametrize(
     "scenario_params",
     [
+        SCENARIO_intersection_2,
         SCENARIO_intersection_3,
         SCENARIO_intersection_4,
         SCENARIO_intersection_5,
