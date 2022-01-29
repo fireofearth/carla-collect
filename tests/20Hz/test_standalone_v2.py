@@ -169,6 +169,24 @@ def scenario(scenario_params, agent_constructor, ctrl_params,
 ##################
 # Town03 scenarios
 
+CONTROLS_straight = [
+    util.AttrDict(
+        interval=(0, 12*10,),
+        control=carla.VehicleControl(throttle=0.3)
+    ),
+]
+SCENARIO_straight = pytest.param(
+    # move straight through intersection
+    ScenarioParameters(
+            ego_spawn_idx=60,
+            n_burn_interval=12,
+            run_interval=13,
+            controls=CONTROLS_straight,
+            turn_choices=[0],
+            max_distance=70),
+    id="straight"
+)
+
 CONTROLS_intersection_4_1 = [
     util.AttrDict(
         interval=(0, 21*5,),
@@ -195,7 +213,7 @@ SCENARIO_intersection_4_1 = pytest.param(
 
 CONTROLS_intersection_3 = [
     util.AttrDict(
-        interval=(0, 11*5,),
+        interval=(0, 12*10,),
         control=carla.VehicleControl(throttle=0.3)
     ),
 ]
@@ -251,12 +269,13 @@ CONTROLS_roundabout_1 = [
     ),
 ]
 SCENARIO_roundabout_1 = pytest.param(
+    # S-shaped turning in roundabout
     ScenarioParameters(
             ego_spawn_idx=247,
             n_burn_interval=5,
-            run_interval=40,
+            run_interval=60,
             controls=CONTROLS_roundabout_1,
-            turn_choices=[0, 1],
+            turn_choices=[1, 0],
             max_distance=200),
     id="roundabout_1"
 )
@@ -276,6 +295,14 @@ VARIABLES_ch6_step1 = pytest.param(
         loop_type=LoopEnum.CLOSED_LOOP
     ),
     id="ch6_step1"
+)
+VARIABLES_ch6_step2 = pytest.param(
+    MotionPlanner, CtrlParameters(
+        control_horizon=6,
+        step_horizon=2,
+        loop_type=LoopEnum.CLOSED_LOOP
+    ),
+    id="ch6_step2"
 )
 VARIABLES_ch8_open = pytest.param(
     MotionPlanner, CtrlParameters(
@@ -299,6 +326,7 @@ VARIABLES_ch6_open = pytest.param(
     [
         VARIABLES_ch8_step1,
         VARIABLES_ch6_step1,
+        VARIABLES_ch6_step2,
         VARIABLES_ch8_open,
         VARIABLES_ch6_open
     ]
@@ -306,6 +334,7 @@ VARIABLES_ch6_open = pytest.param(
 @pytest.mark.parametrize(
     "scenario_params",
     [
+        SCENARIO_straight,
         SCENARIO_intersection_2,
         SCENARIO_intersection_3,
         SCENARIO_intersection_4,

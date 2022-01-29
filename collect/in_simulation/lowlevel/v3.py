@@ -67,7 +67,7 @@ class PIDLongitudinalController(object):
         """
         current_speed = carlautil.actor_to_speed(self.__vehicle)
         error = target_speed - current_speed
-        logging.info(f"step() speed current={current_speed} target={target_speed} error={error}")
+        # logging.info(f"step() speed current={current_speed} target={target_speed} error={error}")
         self.__error_buffer.append(error)
         if len(self.__error_buffer) >= 2:
             _de = (self.__error_buffer[-1] - self.__error_buffer[-2]) / self.__dt
@@ -177,9 +177,10 @@ class VehiclePIDController(object):
             'dt': self.__dt}
 
         self.__args_longitudinal_dict = {
-            'K_P': 0.90,
-            'K_I': 0.28,
-            'K_D': 0.07,
+            'K_P': 1.00,
+            'K_I': 0.50,
+            #'K_D': 0.07,
+            'K_D': 0.00,
             'dt': self.__dt}
 
         self.__max_steering = max_steering
@@ -216,16 +217,16 @@ class VehiclePIDController(object):
             speed=self.longitudinal_controller.get_current(),
             angle=self.lateral_controller.get_current()
         )
+        speed = carlautil.actor_to_speed(self.__vehicle)
+        _, angle, _ = carlautil.to_rotation_ndarray(self.__vehicle)
         if not self.step_to_speed \
                 or self.__step_idx - 1 >= len(self.step_to_speed):
             return util.AttrDict(
-                measurement=util.AttrDict(speed=0., angle=0.),
-                reference=util.AttrDict(speed=0., angle=0.),
+                measurement=util.AttrDict(speed=speed, angle=angle),
+                reference=util.AttrDict(speed=speed, angle=angle),
                 error=error,
                 control=control
             )
-        speed = carlautil.actor_to_speed(self.__vehicle)
-        _, angle, _ = carlautil.to_rotation_ndarray(self.__vehicle)
         reference_speed = self.step_to_speed[self.__step_idx - 1]
         reference_angle = self.step_to_angle[self.__step_idx - 1]
         return util.AttrDict(
@@ -291,7 +292,6 @@ class VehiclePIDController(object):
         speed = carlautil.actor_to_speed(self.__vehicle)
         _, heading, _ = carlautil.to_rotation_ndarray(self.__vehicle)
         target_speeds = np.concatenate(([speed], target_speeds))
-        logging.info(target_speeds)
         target_angles = np.concatenate(([heading], target_angles))
         # angles are not expected to lie within (-pi, pi]. Enforce this constraint.
         target_angles = util.npu.warp_radians_neg_pi_to_pi(target_angles)

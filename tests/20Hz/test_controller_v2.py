@@ -125,7 +125,7 @@ def scenario(scenario_params, carla_synchronous, request):
         ##########
         # Plotting
         fig, axes = plt.subplots(2,2, figsize=(12, 12))
-        axes = axes.ravel()
+        axes = axes.T.ravel()
         timesteps = np.arange(len(speeds)) * 0.05
         axes[0].plot(timesteps, controller.step_to_speed, label="target")
         axes[0].plot(timesteps, speeds, label="measurement")
@@ -393,6 +393,24 @@ SCENARIO_at555_right_turn035 = pytest.param(
 )
 
 enter_rad = math.radians(89.831024)
+CONTROLS_accelerate = util.AttrDict(
+    target_speeds=[i*(5.55/20) for i in range(1, 21)],
+    target_angles=[enter_rad]*20,
+    step_period=10
+)
+SCENARIO_accelerate = pytest.param(
+    # Accelerate gradually.
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        spawn_shift=None,
+        n_burn_steps=100,
+        run_steps=200,
+        controls=CONTROLS_accelerate,
+    ),
+    id="accelerate"
+)
+
+enter_rad = math.radians(89.831024)
 CONTROLS_vary_speed1 = util.AttrDict(
     target_speeds=[5.55 - i*(5.55/10) for i in range(0, 6)] \
         + [5.55 - i*(5.55/10) for i in range(4, 0, -1)] \
@@ -478,6 +496,7 @@ SCENARIO_vary2 = pytest.param(
         SCENARIO_left_turn035,
         SCENARIO_at555_left_turn035,
         SCENARIO_at555_right_turn035,
+        SCENARIO_accelerate,
         SCENARIO_vary_speed1,
         SCENARIO_vary1,
         SCENARIO_vary2,

@@ -56,6 +56,7 @@ class MotionPlanner(object):
         # TODO: hardcoded
         params.max_a = 1
         params.min_a = -7
+        params.max_v = 5
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
         wheels = physics_control.wheels
@@ -359,7 +360,8 @@ class MotionPlanner(object):
         params : util.AttrDict
         v : np.array of docplex.mp.vartype.VarType
         """
-        max_v = self.__ego_vehicle.get_speed_limit() # is m/s
+        # max_v = self.__ego_vehicle.get_speed_limit() # is m/s
+        max_v = self.__params.max_v
         constraints = []
         constraints.extend([ z <= max_v for z in v ])
         constraints.extend([ z >= 0     for z in v ])
@@ -419,7 +421,7 @@ class MotionPlanner(object):
         
         """Start from current vehicle position and minimize the objective"""
         w_ch_accel = 0.
-        w_ch_turning = 0.
+        w_ch_turning = 0.5
         w_accel = 0.
         w_turning = 0.
         # final destination objective
@@ -471,7 +473,7 @@ class MotionPlanner(object):
         ctrl_result = self.do_highlevel_control(params)
 
         """use control input next round for warm starting."""
-        # self.U_warmstarting = ctrl_result.U_star
+        self.U_warmstarting = ctrl_result.U_star
 
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""
