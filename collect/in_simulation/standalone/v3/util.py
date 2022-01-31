@@ -207,6 +207,8 @@ def plot_oa_simulation_0(
         acceleration, steering as ndarray of shape (2, T).
     goals : collections.OrderedDict of (int, util.AttrDict)
         Indexed by frame ID. EV's goal.
+    lowlevel : util.AttrDict
+        PID statistics.
     road_segs : util.AttrDict
         Container of road segment properties.
     ego_bbox : ndarray
@@ -433,4 +435,4 @@ def plot_oa_simulation_1(
             road_boundary_constraints=road_boundary_constraints
         )
 
-plot_oa_simulation = plot_oa_simulation_1
+plot_oa_simulation = plot_oa_simulation_0
