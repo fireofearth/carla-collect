@@ -256,9 +256,11 @@ class MotionPlanner(object):
         v_0_mag = self.get_current_velocity()
         # initial_state - state at current frame in world/local coordinates
         #   Local coordinates has initial position and heading at 0
+        x_init = np.array([0, 0, 0, v_0_mag])
+        u_init = np.array([0., 0.])
         initial_state = util.AttrDict(
             world=np.array([p_0_x, p_0_y, psi_0, v_0_mag]),
-            local=np.array([0,     0,     0,     v_0_mag])
+            local=x_init
         )
         params.initial_state = initial_state
         # transform - transform points from local coordinates back to world coordinates.
@@ -274,9 +276,8 @@ class MotionPlanner(object):
         params.transform = transform
         # longitudinal and lateral dimensions of car are normally 3.70 m, 1.79 m resp.
         bbox_lon = self.__params.bbox_lon
-        # TODO: use center of gravity from API instead
-        A = get_state_matrix(0, 0, 0, v_0_mag, 0, l_r=0.5*bbox_lon, L=bbox_lon)
-        B = get_input_matrix(0, 0, 0, v_0_mag, 0, l_r=0.5*bbox_lon, L=bbox_lon)
+        A = get_state_matrix(x_init, u_init, l_r=0.5*bbox_lon, L=bbox_lon)
+        B = get_input_matrix(x_init, u_init, l_r=0.5*bbox_lon, L=bbox_lon)
         C = get_output_matrix()
         D = get_feedforward_matrix()
         sys = control.matlab.c2d(

@@ -16,11 +16,16 @@ import utility as util
 import carlautil
 import carlautil.debug
 
+DEFAULT_BBOX = np.array([4.5, 2.5])
+
 class OVehicle(object):
 
     @classmethod
-    def from_trajectron(cls, node, T, ground_truth, past,
-            latent_pmf, predictions, filter_pmf=0.1, bbox=[4.5, 2.5]):
+    def from_trajectron(
+            cls, node, T, ground_truth, past,
+            latent_pmf, predictions, filter_pmf=0.1,
+            bbox=DEFAULT_BBOX
+        ):
         """Create other vehicle from Trajectron++ prediction.
 
         Parameters

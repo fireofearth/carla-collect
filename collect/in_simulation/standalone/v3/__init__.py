@@ -36,9 +36,11 @@ from ....profiling import profile
 from ....generate.scene import OnlineConfig
 from .util import plot_oa_simulation
 from ...dynamics.bicycle_v2 import (
-    get_state_matrix, get_input_matrix,
-    get_output_matrix, get_feedforward_matrix,
-    VehicleModel
+    get_state_matrix,
+    get_input_matrix,
+    get_output_matrix,
+    get_feedforward_matrix,
+    VehicleModel,
 )
 from ...lowlevel.v3 import VehiclePIDController
 
@@ -49,8 +51,8 @@ import utility.npu
 import carlautil
 import carlautil.debug
 
-class MotionPlanner(object):
 
+class MotionPlanner(object):
     def __make_global_params(self):
         """Get scenario wide parameters used across all loops"""
         params = util.AttrDict()
@@ -61,11 +63,9 @@ class MotionPlanner(object):
         params.min_a = -7
         params.max_v = 5
         # objective : util.AttrDict
-        #   Parameters in objective function. 
+        #   Parameters in objective function.
         params.objective = util.AttrDict(
-            w_final=2.,
-            w_ch_accel=0.5, w_ch_turning=0.5,
-            w_accel=0.5, w_turning=0.5
+            w_final=2.0, w_ch_accel=0.5, w_ch_turning=0.5, w_accel=0.5, w_turning=0.5
         )
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -73,11 +73,12 @@ class MotionPlanner(object):
         params.limit_delta = np.deg2rad(wheels[0].max_steer_angle)
         # Max steering
         #   We fix max turning angle to make reasonable planned turns.
-        params.max_delta = 0.5*params.limit_delta
+        params.max_delta = 0.5 * params.limit_delta
         # longitudinal and lateral dimensions of car are normally 3.70 m, 1.79 m resp.
         params.bbox = util.AttrDict()
         params.bbox.lon, params.bbox.lat, _ = carlautil.actor_to_bbox_ndarray(
-                self.__ego_vehicle)
+            self.__ego_vehicle
+        )
         # Minimum distance from vehicle to avoid collision.
         #   Assumes that car is a circle.
         # TODO: remove this. Improve bounds instead
@@ -90,18 +91,23 @@ class MotionPlanner(object):
         # __road_seg_starting : np.array
         #   The position and the heading angle of the starting waypoint
         #   of the road of form [x, y, angle] in (meters, meters, radians).
-        self.__road_seg_starting, self.__road_seg_enclosure, self.__road_seg_params \
-                = self.__map_reader.road_segment_enclosure_from_actor(self.__ego_vehicle)
-        self.__road_seg_starting[1] *= -1 # need to flip about x-axis
+        (
+            self.__road_seg_starting,
+            self.__road_seg_enclosure,
+            self.__road_seg_params,
+        ) = self.__map_reader.road_segment_enclosure_from_actor(self.__ego_vehicle)
+        self.__road_seg_starting[1] *= -1  # need to flip about x-axis
         self.__road_seg_starting[2] = util.npu.reflect_radians_about_x_axis(
-                self.__road_seg_starting[2]) # need to flip about x-axis
-        self.__road_seg_enclosure[:, 1] *= -1 # need to flip about x-axis
+            self.__road_seg_starting[2]
+        )  # need to flip about x-axis
+        self.__road_seg_enclosure[:, 1] *= -1  # need to flip about x-axis
         # __goal
         #   Goal destination the vehicle should navigates to.
         self.__goal = util.AttrDict(x=50, y=0, is_relative=True)
 
     def __setup_curved_road_segmented_boundary_conditions(
-            self, turn_choices, max_distance):
+        self, turn_choices, max_distance
+    ):
         # __turn_choices : list of int
         #   List of choices of turns to make at intersections,
         #   starting with the first intersection to the last.
@@ -121,39 +127,46 @@ class MotionPlanner(object):
         # __road_segs.positions : ndarray
         #   The 2D positions of center of the covering polytope in index.
         self.__road_segs = self.__map_reader.curved_road_segments_enclosure_from_actor(
-                    self.__ego_vehicle, self.__max_distance, choices=self.__turn_choices,
-                    flip_y=True)
-        logging.info(f"max curvature of planned path is {self.__road_segs.max_k}; "
-                     f"created {len(self.__road_segs.polytopes)} polytopes covering "
-                     f"a distance of {np.round(self.__max_distance, 2)} m in total.")
+            self.__ego_vehicle,
+            self.__max_distance,
+            choices=self.__turn_choices,
+            flip_y=True,
+        )
+        logging.info(
+            f"max curvature of planned path is {self.__road_segs.max_k}; "
+            f"created {len(self.__road_segs.polytopes)} polytopes covering "
+            f"a distance of {np.round(self.__max_distance, 2)} m in total."
+        )
         x, y = self.__road_segs.spline(self.__road_segs.distances[-1])
         # __goal
         #   Not used for motion planning when using this BC.
-        self.__goal = util.AttrDict(x=x, y=y, is_relative=False)        
+        self.__goal = util.AttrDict(x=x, y=y, is_relative=False)
 
-    def __init__(self,
-            ego_vehicle,
-            map_reader,
-            scene_config=OnlineConfig(),
-            ##########################
-            # Motion Planning settings
-            n_burn_interval=4,
-            control_horizon=6,
-            step_horizon=1,
-            road_boundary_constraints=True,
-            angle_boundary_constraints=False,
-            #######################
-            # Logging and debugging
-            log_cplex=False,
-            log_agent=False,
-            plot_simulation=False,
-            plot_boundary=False,
-            #######################
-            # Planned path settings
-            turn_choices=[],
-            max_distance=100,
-            #######################
-            **kwargs):
+    def __init__(
+        self,
+        ego_vehicle,
+        map_reader,
+        scene_config=OnlineConfig(),
+        ##########################
+        # Motion Planning settings
+        n_burn_interval=4,
+        control_horizon=6,
+        step_horizon=1,
+        road_boundary_constraints=True,
+        angle_boundary_constraints=False,
+        #######################
+        # Logging and debugging
+        log_cplex=False,
+        log_agent=False,
+        plot_simulation=False,
+        plot_boundary=False,
+        #######################
+        # Planned path settings
+        turn_choices=[],
+        max_distance=100,
+        #######################
+        **kwargs,
+    ):
         # __ego_vehicle : carla.Vehicle
         #   The vehicle to control in the simulator.
         self.__ego_vehicle = ego_vehicle
@@ -176,8 +189,10 @@ class MotionPlanner(object):
         self.__world = self.__ego_vehicle.get_world()
         # __steptime : float
         #   Time in seconds taken to complete one step of MPC.
-        self.__steptime = self.__scene_config.record_interval \
-                * self.__world.get_settings().fixed_delta_seconds
+        self.__steptime = (
+            self.__scene_config.record_interval
+            * self.__world.get_settings().fixed_delta_seconds
+        )
         # __U_warmstarting : ndarray
         #   Controls computed from last MPC step for warmstarting.
         self.__U_warmstarting = None
@@ -187,24 +202,24 @@ class MotionPlanner(object):
         self.__params = self.__make_global_params()
         lon = self.__params.bbox.lon
         self.__vehicle_model = VehicleModel(
-            self.__control_horizon, self.__steptime, l_r=0.5*lon, L=lon
+            self.__control_horizon, self.__steptime, l_r=0.5 * lon, L=lon
         )
         self.__setup_curved_road_segmented_boundary_conditions(
             turn_choices, max_distance
         )
         self.road_boundary_constraints = road_boundary_constraints
         self.angle_boundary_constraints = angle_boundary_constraints
-        self.log_cplex       = log_cplex
-        self.log_agent       = log_agent
+        self.log_cplex = log_cplex
+        self.log_agent = log_agent
         self.plot_simulation = plot_simulation
-        self.plot_boundary   = plot_boundary
+        self.plot_boundary = plot_boundary
         if self.plot_simulation:
             self.__plot_simulation_data = util.AttrDict(
                 actual_trajectory=collections.OrderedDict(),
                 planned_trajectories=collections.OrderedDict(),
                 planned_controls=collections.OrderedDict(),
                 goals=collections.OrderedDict(),
-                lowlevel=collections.OrderedDict()
+                lowlevel=collections.OrderedDict(),
             )
 
     def get_vehicle_state(self):
@@ -237,7 +252,7 @@ class MotionPlanner(object):
             self.__step_horizon,
             self.__steptime,
             filename=filename,
-            road_boundary_constraints=self.road_boundary_constraints
+            road_boundary_constraints=self.road_boundary_constraints,
         )
 
     def destroy(self):
@@ -250,30 +265,26 @@ class MotionPlanner(object):
         v_0_x, v_0_y, _ = carlautil.actor_to_velocity_ndarray(
             self.__ego_vehicle, flip_y=True
         )
-        return np.sqrt(v_0_x**2 + v_0_y**2)
+        return np.sqrt(v_0_x ** 2 + v_0_y ** 2)
 
     def make_local_params(self, frame):
         """Get the local optimization parameters used for current MPC step."""
         params = util.AttrDict()
         params.frame = frame
-        p_0_x, p_0_y, _ = carlautil.to_location_ndarray(
-            self.__ego_vehicle, flip_y=True
-        )
+        p_0_x, p_0_y, _ = carlautil.to_location_ndarray(self.__ego_vehicle, flip_y=True)
         _, psi_0, _ = carlautil.actor_to_rotation_ndarray(
             self.__ego_vehicle, flip_y=True
         )
         v_0_mag = self.get_current_velocity()
         x_init = np.array([p_0_x, p_0_y, psi_0, v_0_mag])
-        initial_state = util.AttrDict(
-            world=x_init, local=np.array([0, 0, 0, v_0_mag])
-        )
+        initial_state = util.AttrDict(world=x_init, local=np.array([0, 0, 0, v_0_mag]))
         params.initial_state = initial_state
         # try:
         #     u_init = self.__U_warmstarting[self.__step_horizon]
         # except TypeError:
         #     u_init = np.array([0., 0.])
         # Using previous control doesn't work
-        u_init = np.array([0., 0.])
+        u_init = np.array([0.0, 0.0])
         x_bar, u_bar, Gamma, nx, nu = self.__vehicle_model.get_optimization_ltv(
             x_init, u_init
         )
@@ -285,16 +296,17 @@ class MotionPlanner(object):
         fig, ax = plt.subplots(figsize=(7, 7))
         x_min, y_min = np.min(self.__road_segs.positions, axis=0)
         x_max, y_max = np.max(self.__road_segs.positions, axis=0)
-        self.__map_reader.render_map(ax,
-                extent=(x_min - 20, x_max + 20, y_min - 20, y_max + 20))
+        self.__map_reader.render_map(
+            ax, extent=(x_min - 20, x_max + 20, y_min - 20, y_max + 20)
+        )
         x, y, _ = carlautil.to_location_ndarray(self.__ego_vehicle, flip_y=True)
         ax.scatter(x, y, c="r", zorder=10)
         x, y = goal
         ax.scatter(x, y, c="g", marker="*", zorder=10)
         for A, b in segs_polytopes:
-            util.npu.plot_h_polyhedron(ax, A, b, fc='b', ec='b', alpha=0.3)
+            util.npu.plot_h_polyhedron(ax, A, b, fc="b", ec="b", alpha=0.3)
         filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_boundary"
-        fig.savefig(os.path.join('out', f"{filename}.png"))
+        fig.savefig(os.path.join("out", f"{filename}.png"))
         fig.clf()
 
     def compute_segs_polytopes_and_goal(self, params):
@@ -321,11 +333,13 @@ class MotionPlanner(object):
         segment_length = self.__road_segs.segment_length
         v_lim = self.__ego_vehicle.get_speed_limit()
         go_forward = int(
-            (0.75*v_lim*self.__steptime*self.__control_horizon) // segment_length + 1
+            (0.75 * v_lim * self.__steptime * self.__control_horizon) // segment_length
+            + 1
         )
         pos0 = params.initial_state.world[:2]
         closest_idx = np.argmin(
-                np.linalg.norm(self.__road_segs.positions - pos0, axis=1))
+            np.linalg.norm(self.__road_segs.positions - pos0, axis=1)
+        )
         near_idx = max(closest_idx - 1, 0)
         far_idx = min(closest_idx + go_forward, n_segs)
         segs_polytopes = self.__road_segs.polytopes[near_idx:far_idx]
@@ -334,7 +348,7 @@ class MotionPlanner(object):
         psi_0 = params.initial_state.world[2]
         seg_psi_bounds = []
         if self.angle_boundary_constraints:
-            epsilon = (1/6)*np.pi
+            epsilon = (1 / 6) * np.pi
             for (x_1, y_1), (x_2, y_2) in self.__road_segs.tangents[near_idx:far_idx]:
                 theta_1 = util.npu.warp_radians_0_to_2pi(math.atan2(y_1, x_1)) - psi_0
                 theta_2 = util.npu.warp_radians_0_to_2pi(math.atan2(y_2, x_2)) - psi_0
@@ -361,33 +375,37 @@ class MotionPlanner(object):
         v = X[:, 3]
         max_v = self.__params.max_v
         constraints = []
-        constraints.extend([ z <= max_v for z in v ])
-        constraints.extend([ z >= 0     for z in v ])
+        constraints.extend([z <= max_v for z in v])
+        constraints.extend([z >= 0 for z in v])
         return constraints
 
     def compute_objective(self, X, U, goal):
         """Set the objective."""
         obj = self.__params.objective
         # final destination objective
-        cost = obj.w_final*(X[-1, 0] - goal[0])**2 + obj.w_final*(X[-1, 1] - goal[1])**2
+        cost = (
+            obj.w_final * (X[-1, 0] - goal[0]) ** 2
+            + obj.w_final * (X[-1, 1] - goal[1]) ** 2
+        )
         # change in acceleration objective
         for u1, u2 in util.pairwise(U[:, 0]):
-            _u = (u1 - u2)
-            cost += obj.w_ch_accel*_u*_u
+            _u = u1 - u2
+            cost += obj.w_ch_accel * _u * _u
         # change in turning objective
         for u1, u2 in util.pairwise(U[:, 1]):
-            _u = (u1 - u2)
-            cost += obj.w_ch_turning*_u*_u
+            _u = u1 - u2
+            cost += obj.w_ch_turning * _u * _u
         # acceleration objective
-        cost += obj.w_accel*np.sum(U[:, 0]**2)
+        cost += obj.w_accel * np.sum(U[:, 0] ** 2)
         # turning objective
-        cost += obj.w_turning*np.sum(U[:, 1]**2)
+        cost += obj.w_turning * np.sum(U[:, 1] ** 2)
         return cost
 
     def do_highlevel_control(self, params):
         """Decide parameters."""
-        segs_polytopes, goal, seg_psi_bounds \
-                = self.compute_segs_polytopes_and_goal(params)
+        segs_polytopes, goal, seg_psi_bounds = self.compute_segs_polytopes_and_goal(
+            params
+        )
 
         """Apply motion planning problem"""
         n_segs = len(segs_polytopes)
@@ -400,11 +418,11 @@ class MotionPlanner(object):
         """Model, control and state variables"""
         model = docplex.mp.model.Model(name="proposed_problem")
         min_u = np.vstack((np.full(T, min_a), np.full(T, -max_delta))).T.ravel()
-        max_u = np.vstack((np.full(T, max_a), np.full(T,  max_delta))).T.ravel()
+        max_u = np.vstack((np.full(T, max_a), np.full(T, max_delta))).T.ravel()
         # Slack variables for control
-        u = model.continuous_var_list(nu*T, lb=min_u, ub=max_u, name='u')
+        u = model.continuous_var_list(nu * T, lb=min_u, ub=max_u, name="u")
         u = np.array(u, dtype=object)
-        u_delta = (u - u_bar)
+        u_delta = u - u_bar
         x = util.obj_matmul(Gamma, u_delta) + x_bar
         # State variables x, y, psi, v
         X = x.reshape(T, nx)
@@ -417,7 +435,7 @@ class MotionPlanner(object):
         """Apply road boundary constraints"""
         if self.road_boundary_constraints:
             # Slack variables from road obstacles
-            Omicron = model.binary_var_list(n_segs*T, name="omicron")
+            Omicron = model.binary_var_list(n_segs * T, name="omicron")
             Omicron = np.array(Omicron, dtype=object).reshape(n_segs, T)
             M_big = self.__params.M_big
             # diag = self.__params.diag
@@ -425,27 +443,27 @@ class MotionPlanner(object):
             T = self.__control_horizon
             for t in range(T):
                 for seg_idx, (A, b) in enumerate(segs_polytopes):
-                    lhs = util.obj_matmul(A, X[t, :2]) \
-                            - np.array(M_big*(1 - Omicron[seg_idx, t]))
-                    rhs = b# - diag
+                    lhs = util.obj_matmul(A, X[t, :2]) - np.array(
+                        M_big * (1 - Omicron[seg_idx, t])
+                    )
+                    rhs = b  # - diag
                     """Constraints on road boundaries"""
-                    model.add_constraints(
-                            [l <= r for (l,r) in zip(lhs, rhs)])
+                    model.add_constraints([l <= r for (l, r) in zip(lhs, rhs)])
                     """Constraints on angle boundaries"""
                     if self.angle_boundary_constraints:
-                        lhs = X[t, 2] - psi_0 - M_big*(1 - Omicron[seg_idx, t])
+                        lhs = X[t, 2] - psi_0 - M_big * (1 - Omicron[seg_idx, t])
                         model.add_constraint(lhs <= seg_psi_bounds[seg_idx][1])
-                        lhs = X[t, 2] - psi_0 + M_big*(1 - Omicron[seg_idx, t])
+                        lhs = X[t, 2] - psi_0 + M_big * (1 - Omicron[seg_idx, t])
                         model.add_constraint(lhs >= seg_psi_bounds[seg_idx][0])
                 model.add_constraint(np.sum(Omicron[:, t]) >= 1)
-        
+
         """Compute and minimize objective"""
         cost = self.compute_objective(X, U, goal)
         model.minimize(cost)
         if self.road_boundary_constraints and self.__U_warmstarting is not None:
             # Warm start inputs if past iteration was run.
             warm_start = model.new_solution()
-            for i, u in enumerate(self.__U_warmstarting[self.__step_horizon:]):
+            for i, u in enumerate(self.__U_warmstarting[self.__step_horizon :]):
                 warm_start.add_var_value(f"u_{2*i}", u[0])
                 warm_start.add_var_value(f"u_{2*i + 1}", u[1])
             # add omicron_0 as hotfix to MIP warmstart as it needs
@@ -454,7 +472,7 @@ class MotionPlanner(object):
             model.add_mip_start(
                 warm_start, write_level=docplex.mp.constants.WriteLevel.AllVars
             )
-        
+
         # model.print_information()
         # model.parameters.read.datacheck = 1
         if self.log_cplex:
@@ -471,9 +489,7 @@ class MotionPlanner(object):
         X_star = util.obj_vectorize(f, X)
         return util.AttrDict(cost=cost, U_star=U_star, X_star=X_star, goal=goal)
 
-    @profile(
-        sort_by="cumulative", lines_to_print=50, strip_dirs=True
-    )
+    @profile(sort_by="cumulative", lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         params = self.make_local_params(frame)
         ctrl_result = self.do_highlevel_control(params)
@@ -509,12 +525,13 @@ class MotionPlanner(object):
         logging.debug(f"In LCSSHighLevelAgent.run_step() with frame = {frame}")
         if self.__first_frame is None:
             self.do_first_step(frame)
-        
+
         if (frame - self.__first_frame) % self.__scene_config.record_interval == 0:
             """We only motion plan every `record_interval` frames
             (e.g. every 0.5 seconds of simulation)."""
-            frame_id = int((frame - self.__first_frame) \
-                    / self.__scene_config.record_interval)
+            frame_id = int(
+                (frame - self.__first_frame) / self.__scene_config.record_interval
+            )
             if frame_id < self.__n_burn_interval:
                 """Initially collect data without doing any control to the vehicle."""
                 pass
@@ -528,9 +545,14 @@ class MotionPlanner(object):
                 payload = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(
                     self.__ego_vehicle, flip_y=True
                 )
-                payload = np.array([
-                    payload[0], payload[1], payload[13], self.get_current_velocity(),
-                ])
+                payload = np.array(
+                    [
+                        payload[0],
+                        payload[1],
+                        payload[13],
+                        self.get_current_velocity(),
+                    ]
+                )
                 self.__plot_simulation_data.actual_trajectory[frame] = payload
                 self.__plot_simulation_data.goals[frame] = self.get_goal()
 
