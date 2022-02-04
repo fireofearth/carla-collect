@@ -11,15 +11,15 @@ import carlautil
 from tests import LoopEnum
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-from collect.in_simulation.midlevel.v6 import MidlevelAgent
+from collect.in_simulation.midlevel.v7 import MidlevelAgent
 from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v3_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
 
-"""Test the midlevel controller v6.
+"""Test the midlevel controller v7.
 
-pytest  tests/20Hz/test_planner_v6.py::test_Town03_scenario[intersection_3-ph6_step1_np100]
+pytest tests/20Hz/test_planner_v7.py::test_Town03_scenario[intersection_3-ph6_step1_ncoin1_np100]
 """
 
 class ScenarioParameters(object):
@@ -85,11 +85,15 @@ class CtrlParameters(object):
             prediction_horizon=8,
             control_horizon=8,
             step_horizon=1,
+            n_coincide=1,
+            random_mcc=False,
             loop_type=LoopEnum.OPEN_LOOP):
         self.n_predictions = n_predictions
         self.prediction_horizon = prediction_horizon
         self.control_horizon = control_horizon
         self.step_horizon = step_horizon
+        self.n_coincide = n_coincide
+        self.random_mcc = random_mcc
         self.loop_type = loop_type
 
 def shift_spawn_point(carla_map, k, spawn_shifts, spawn_point):
@@ -172,7 +176,9 @@ def scenario(scenario_params, ctrl_params,
                 control_horizon=ctrl_params.control_horizon,
                 prediction_horizon=ctrl_params.prediction_horizon,
                 step_horizon=ctrl_params.step_horizon,
+                n_coincide=ctrl_params.n_coincide,
                 n_predictions=ctrl_params.n_predictions,
+                random_mcc=ctrl_params.random_mcc,
                 scene_builder_cls=TrajectronPlusPlusSceneBuilder,
                 turn_choices=scenario_params.turn_choices,
                 max_distance=scenario_params.max_distance,
@@ -289,21 +295,23 @@ SCENARIO_intersection_3_1 = pytest.param(
     id="intersection_3_1"
 )
 
-VARIABLES_ph6_ch1_np100 = pytest.param(
+VARIABLES_ph6_step1_ncoin1_np100 = pytest.param(
     CtrlParameters(
         prediction_horizon=6,
         control_horizon=6,
         step_horizon=1,
         n_predictions=100,
+        n_coincide=1,
+        random_mcc=False,
         loop_type=LoopEnum.CLOSED_LOOP
     ),
-    id="ph6_step1_np100"
+    id="ph6_step1_ncoin1_np100"
 )
 
 @pytest.mark.parametrize(
     "ctrl_params",
     [
-        VARIABLES_ph6_ch1_np100
+        VARIABLES_ph6_step1_ncoin1_np100
     ]
 )
 @pytest.mark.parametrize(
