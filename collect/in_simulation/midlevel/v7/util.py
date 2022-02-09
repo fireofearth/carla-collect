@@ -74,8 +74,10 @@ def plot_multiple_coinciding_controls_timestep(
     """
     ovehicle_colors = get_ovehicle_color_set()
     render_scene(ax, pred_result.scene, global_coordinates=True)
-    ax.plot(ctrl_result.goal[0], ctrl_result.goal[1],
-            marker='*', markersize=8, color="yellow")
+    ax.plot(
+        ctrl_result.goal[0], ctrl_result.goal[1],
+        marker='*', markersize=8, color="yellow"
+    )
 
     # Plot ego vehicle past trajectory
     past = None
@@ -189,15 +191,13 @@ def plot_multiple_coinciding_controls(
     x_max, y_max = np.max(_X_star, axis=0)
     x_mid, y_mid = (x_max + x_min) / 2, (y_max + y_min) / 2
     extent = (x_mid - PADDING, x_mid + PADDING, y_mid - PADDING, y_mid + PADDING)
-    prod_latent_indices = util.product_list_of_list(
-        [range(ovehicle.n_states) for ovehicle in ovehicles]
-    )
+    
     for traj_idx in range(params.N_select):
         """Generate a single plot for each combination of overapproximations
         that we have applied control over."""
         fig, axes = plt.subplots(T // 2 + (T % 2), 2, figsize=(10, (10 / 4)*T))
         axes = axes.ravel()
-        latent_indices = prod_latent_indices[traj_idx]
+        latent_indices = params.sublist_joint_decisions[traj_idx]
         for t, ax in enumerate(axes):
             plot_multiple_coinciding_controls_timestep(
                 ax, pred_result, ovehicles, params, ctrl_result,

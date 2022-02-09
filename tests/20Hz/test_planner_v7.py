@@ -271,16 +271,10 @@ SCENARIO_intersection_3 = pytest.param(
     ),
     id="intersection_3"
 )
-
-CONTROLS_intersection_3_1 = [
-    util.AttrDict(
-        interval=(0, 9*10,),
-        control=carla.VehicleControl(throttle=0.36)
-    ),
-]
 SCENARIO_intersection_3_1 = pytest.param(
     # left turn of low curvature to angled road
     # 4 other vehicles
+    # Causes MCC to crash
     ScenarioParameters(
         ego_spawn_idx=85,
         other_spawn_ids=[14, 14, 15, 15],
@@ -288,11 +282,27 @@ SCENARIO_intersection_3_1 = pytest.param(
         spawn_shifts=[-5, 31, 23, -5, -13],
         n_burn_interval=10,
         run_interval=22,
-        controls=CONTROLS_intersection_3_1,
+        controls=CONTROLS_intersection_3,
         turn_choices=[1],
         max_distance=100,
     ),
     id="intersection_3_1"
+)
+SCENARIO_intersection_3_2 = pytest.param(
+    # left turn of low curvature to angled road
+    # 4 other vehicles
+    # Causes MCC to crash
+    ScenarioParameters(
+        ego_spawn_idx=85,
+        other_spawn_ids=[14, 14],
+        spawn_shifts=[-5, 31-5, 23-5],
+        n_burn_interval=10,
+        run_interval=22,
+        controls=CONTROLS_intersection_3,
+        turn_choices=[1],
+        max_distance=100,
+    ),
+    id="intersection_3_2"
 )
 
 VARIABLES_ph6_step1_ncoin1_np100 = pytest.param(
@@ -307,18 +317,32 @@ VARIABLES_ph6_step1_ncoin1_np100 = pytest.param(
     ),
     id="ph6_step1_ncoin1_np100"
 )
+VARIABLES_ph6_step1_ncoin1_r_np100 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=6,
+        control_horizon=6,
+        step_horizon=1,
+        n_predictions=100,
+        n_coincide=1,
+        random_mcc=True,
+        loop_type=LoopEnum.CLOSED_LOOP
+    ),
+    id="ph6_step1_ncoin1_r_np100"
+)
 
 @pytest.mark.parametrize(
     "ctrl_params",
     [
-        VARIABLES_ph6_step1_ncoin1_np100
+        VARIABLES_ph6_step1_ncoin1_np100,
+        VARIABLES_ph6_step1_ncoin1_r_np100
     ]
 )
 @pytest.mark.parametrize(
     "scenario_params",
     [
         SCENARIO_intersection_3,
-        SCENARIO_intersection_3_1
+        SCENARIO_intersection_3_1,
+        SCENARIO_intersection_3_2
     ]
 )
 def test_Town03_scenario(scenario_params, ctrl_params,

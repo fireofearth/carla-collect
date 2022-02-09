@@ -13,6 +13,7 @@ import weakref
 import copy
 import numbers
 import math
+import random
 
 # PyPI libraries
 import numpy as np
@@ -439,22 +440,42 @@ class MidlevelAgent(AbstractDataCollector):
         # N_traj : int 
         #   Number of planned trajectories possible to compute
         params.N_traj = np.prod(params.K)
-        # TODO: figure out a way to specify number of subtrajectories
-        max_K = np.max(params.K)
         if self.__random_mcc:
+            """How does random multiple coinciding control work?
+            each item in the product set S_1 X S_2 X S_3 X S_4
+            represents the particular choices each vehicles make 
+            get the subset of the product set S_1 X S_2 X S_3 X S_4
+            such that for each i = 1..4, for each j in S_i there is
+            a tuple in the subset with j in the i-th place.
+            """
+            vehicle_n_states = [ovehicle.n_states for ovehicle in ovehicles]            
+            n_states_max = max(vehicle_n_states)
+            vehicle_state_ids = [
+                util.range_to_list(n_states) for n_states in vehicle_n_states
+            ]
+            def preprocess_state_ids(state_ids):
+                state_ids = state_ids + random.choices(
+                    state_ids, k=n_states_max - len(state_ids)
+                )
+                random.shuffle(state_ids)
+                return state_ids
+            vehicle_state_ids = util.map_to_list(preprocess_state_ids, vehicle_state_ids)
+            # sublist_joint_decisions : list of (list of int)
+            #   Subset of S_1 X S_2 X S_3 X S_4 of joint decisions
+            params.sublist_joint_decisions = np.array(vehicle_state_ids).T.tolist()
             # N_select : int
             #   Number of planned trajectories to compute
-            params.N_select = min(int(1.5*max_K), params.N_traj)
-            # subtraj_indices : ndarray of int
-            #   The indices of the sub-trajectory to optimize for.
-            params.subtraj_indices = np.random.choice(
-                np.arange(params.N_traj), size=params.N_select, replace=False
-            )
+            params.N_select = len(params.sublist_joint_decisions)
 
         else:
-            params.N_select = params.N_traj
-            params.subtraj_indices = np.arange(params.N_traj)
-
+            # sublist_joint_decisions : list of (list of int)
+            #   Entire set of S_1 X S_2 X S_3 X S_4 of joint decision outcomes
+            params.sublist_joint_decisions = util.product_list_of_list(
+                [util.range_to_list(ovehicle.n_states) for ovehicle in ovehicles]
+            )
+            # N_select : int
+            #   Number of planned trajectories to compute, equal to N_traj.
+            params.N_select = len(params.sublist_joint_decisions)
 
         return params
 
@@ -635,21 +656,32 @@ class MidlevelAgent(AbstractDataCollector):
             Collection of b vectors of shape (N_traj, T, O, L).
             Axis 2 (zero-based) is sorted by ovehicle.
         """
-        N_traj, O = params.N_traj, params.O
+
+        """Compute overapproximations across all vehicles, latents and timesteps"""
         T = self.__prediction_horizon
-        A_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
-        b_unions = np.empty((N_traj, T, O,), dtype=object).tolist()
-        for traj_idx, latent_indices in enumerate(
-                util.product_list_of_list([range(ovehicle.n_states) for ovehicle in ovehicles])):
-            for t in range(T):
-                for ov_idx, ovehicle in enumerate(ovehicles):
-                    latent_idx = latent_indices[ov_idx]
+        K, O = params.K, params.O
+        A_union = np.empty((T, np.max(K), O,), dtype=object).tolist()
+        b_union = np.empty((T, np.max(K), O,), dtype=object).tolist()
+        for ov_idx, ovehicle in enumerate(ovehicles):
+            for latent_idx in range(ovehicle.n_states):
+                for t in range(T):
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
                     A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
-                    A_unions[traj_idx][t][ov_idx] = A_union_k
-                    b_unions[traj_idx][t][ov_idx] = b_union_k
+                    A_union[t][latent_idx][ov_idx] = A_union_k
+                    b_union[t][latent_idx][ov_idx] = b_union_k
+
+        """Assign overapproximations to subsampling of joint decisions."""
+        N_select = params.N_select
+        A_unions = np.empty((N_select, T, O,), dtype=object).tolist()
+        b_unions = np.empty((N_select, T, O,), dtype=object).tolist()
+        for traj_idx, latent_indices in enumerate(params.sublist_joint_decisions):
+            for t in range(T):
+                for ov_idx, ovehicle in enumerate(ovehicles):
+                    latent_idx = latent_indices[ov_idx]
+                    A_unions[traj_idx][t][ov_idx] = A_union[t][latent_idx][ov_idx]
+                    b_unions[traj_idx][t][ov_idx] = b_union[t][latent_idx][ov_idx]
     
         """Plot the overapproximation"""
         if self.plot_overapprox:
@@ -684,9 +716,9 @@ class MidlevelAgent(AbstractDataCollector):
         """Decide parameters."""
 
         """Compute road segments and goal."""
-        segs_polytopes, goal, seg_psi_bounds = self.compute_segs_polytopes_and_goal(
-            params
-        )
+        (
+            segs_polytopes, goal, seg_psi_bounds
+        ) = self.compute_segs_polytopes_and_goal(params)
 
         """Apply motion planning problem"""
         N_select = params.N_select
@@ -750,15 +782,27 @@ class MidlevelAgent(AbstractDataCollector):
             A_unions, b_unions = self.__compute_overapproximations(
                 vertices, params, ovehicles
             )
-            O, L, K = params.O, self.__params.L, params.K
+            O, L = params.O, self.__params.L
             # Slack variables for vehicle obstacles
             Delta = model.binary_var_list(O * L * N_select * T, name='delta')
             Delta = np.array(Delta, dtype=object).reshape(N_select, T, O, L)
             M_big = self.__params.M_big
             diag = self.__params.diag
-            for n, i in enumerate(params.subtraj_indices):
-                # select outerapprox. by index i
-                A_union, b_union = A_unions[i], b_unions[i]
+
+            # for n, i in enumerate(params.subtraj_indices):
+            #     # select outerapprox. by index i
+            #     A_union, b_union = A_unions[i], b_unions[i]
+            #     for t in range(T):
+            #         As, bs = A_union[t], b_union[t]
+            #         for o, (A, b) in enumerate(zip(As, bs)):
+            #             lhs = util.obj_matmul(A, X[n,t,:2]) + M_big*(1 - Delta[n,t,o])
+            #             rhs = b + diag
+            #             model.add_constraints([l >= r for (l,r) in zip(lhs, rhs)])
+            #             model.add_constraint(np.sum(Delta[n,t,o]) >= 1)
+            
+            for n in range(N_select):
+                # select outerapprox. by index n
+                A_union, b_union = A_unions[n], b_unions[n]
                 for t in range(T):
                     As, bs = A_union[t], b_union[t]
                     for o, (A, b) in enumerate(zip(As, bs)):
