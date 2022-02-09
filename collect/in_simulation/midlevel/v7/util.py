@@ -228,8 +228,8 @@ def plot_oa_simulation_timestep(
     coin_delta = coin_control[:, 1]
 
     # contingency component of trajectory
-    cont_trajectory = planned_trajectory[:, (n_coincide + 1):]
-    cont_control = planned_control[:, n_coincide:]
+    cont_trajectory = planned_trajectory[:, n_coincide:]
+    cont_control = planned_control[:, (n_coincide - 1):]
     cont_xy = cont_trajectory[..., :2]
     cont_psi = cont_trajectory[..., 2]
     cont_v = cont_trajectory[..., 3]
@@ -338,8 +338,8 @@ def plot_oa_simulation_timestep(
     ax.plot(range(idx, idx + coin_v.size), coin_v, "-b.", label="linear plan")
     for traj_idx in range(n_select):
         ax.plot(
-            range(idx, idx + cont_v[traj_idx].size), cont_v[traj_idx],
-            "-.", color=traj_colors[traj_idx]
+            range(idx + n_coincide, idx + n_coincide + cont_v[traj_idx].size),
+            cont_v[traj_idx], "-.", color=traj_colors[traj_idx]
         )
     ax.set_title("$v$ speed of c.g., m/s")
     ax.set_ylabel("m/s")
@@ -350,8 +350,8 @@ def plot_oa_simulation_timestep(
     ax.plot(range(idx, idx + coin_psi.size), coin_psi, "-b.", label="linear plan")
     for traj_idx in range(n_select):
         ax.plot(
-            range(idx, idx + cont_psi[traj_idx].size), cont_psi[traj_idx],
-            "-.", color=traj_colors[traj_idx]
+            range(idx + n_coincide, idx + n_coincide + cont_psi[traj_idx].size),
+            cont_psi[traj_idx], "-.", color=traj_colors[traj_idx]
         )
     ax.set_title("$\psi$ longitudinal angle, radians")
     ax.set_ylabel("rad")
@@ -361,8 +361,8 @@ def plot_oa_simulation_timestep(
     ax.plot(range(idx, idx + coin_a.size), coin_a, "-b.", label="control plan")
     for traj_idx in range(n_select):
         ax.plot(
-            range(idx, idx + cont_a[traj_idx].size), cont_a[traj_idx],
-            "-.", color=traj_colors[traj_idx]
+            range(idx + n_coincide - 1, idx + n_coincide - 1 + cont_a[traj_idx].size),
+            cont_a[traj_idx], "-.", color=traj_colors[traj_idx]
         )
     ax.set_title("$a$ acceleration input, $m/s^2$")
 
@@ -371,8 +371,8 @@ def plot_oa_simulation_timestep(
     ax.plot(range(idx, idx + coin_delta.size), coin_delta, "-b.", label="control plan")
     for traj_idx in range(n_select):
         ax.plot(
-            range(idx, idx + cont_delta[traj_idx].size), cont_delta[traj_idx],
-            "-.", color=traj_colors[traj_idx]
+            range(idx + n_coincide - 1, idx + n_coincide - 1 + cont_delta[traj_idx].size),
+            cont_delta[traj_idx], "-.", color=traj_colors[traj_idx]
         )
     ax.set_title("$\delta$ steering input, radians")
 

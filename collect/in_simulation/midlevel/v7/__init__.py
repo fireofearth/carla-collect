@@ -450,6 +450,7 @@ class MidlevelAgent(AbstractDataCollector):
             params.subtraj_indices = np.random.choice(
                 np.arange(params.N_traj), size=params.N_select, replace=False
             )
+
         else:
             params.N_select = params.N_traj
             params.subtraj_indices = np.arange(params.N_traj)
@@ -653,7 +654,7 @@ class MidlevelAgent(AbstractDataCollector):
         """Plot the overapproximation"""
         if self.plot_overapprox:
             raise NotImplementedError()
-            self.__plot_overapproximations(params, ovehicles, vertices, A_union, b_union)
+            # self.__plot_overapproximations(params, ovehicles, vertices, A_union, b_union)
 
         return np.array(A_unions), np.array(b_unions)
 
