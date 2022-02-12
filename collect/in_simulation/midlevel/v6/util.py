@@ -186,6 +186,114 @@ def plot_lcss_prediction(pred_result, ovehicles,
     fig.clf()
 
 
+def plot_predictive_control_failure_timestep(
+    ax, pred_result, ovehicles, params,
+    ctrl_result, t, ego_bbox, extent=None
+):
+    ovehicle_colors = get_ovehicle_color_set()
+    render_scene(ax, pred_result.scene, global_coordinates=True)
+    ax.plot(ctrl_result.goal[0], ctrl_result.goal[1],
+            marker='*', markersize=8, color="yellow")
+
+    # Plot ego vehicle past trajectory
+    past = None
+    minpos = np.array([pred_result.scene.x_min, pred_result.scene.y_min])
+    for node in pred_result.nodes:
+        if node.id == 'ego':
+            past = pred_result.past_dict[pred_result.timestep][node] + minpos
+            break
+    ax.plot(past[:, 0], past[:, 1], '-ko', markersize=2)
+
+    # Box of current ego vehicle position
+    vertices = util.vertices_from_bbox(
+            params.initial_state.world[:2],
+            params.initial_state.world[2],
+            ego_bbox)
+    bb = patches.Polygon(
+        vertices.reshape((-1,2,)), closed=True, color='k',
+        fc=util.plu.modify_alpha("black", 0.2), ls='-'
+    )
+    ax.add_patch(bb)
+
+    # Plot other vehicles
+    for ov_idx, ovehicle in enumerate(ovehicles):
+        color = ovehicle_colors[ov_idx][0]
+        ax.plot(ovehicle.past[:,0], ovehicle.past[:,1],
+                marker='o', markersize=2, color=color)
+        heading = np.arctan2(ovehicle.past[-1,1] - ovehicle.past[-2,1],
+                ovehicle.past[-1,0] - ovehicle.past[-2,0])
+        vertices = util.vertices_from_bbox(
+                ovehicle.past[-1], heading, np.array([ovehicle.bbox]))
+        bb = patches.Polygon(vertices.reshape((-1,2,)),
+                closed=True, color=color, fc=util.plu.modify_alpha(color, 0.2), ls='-')
+        ax.add_patch(bb)
+        for latent_idx in range(ovehicle.n_states):
+            color = ovehicle_colors[ov_idx][latent_idx]
+            
+            # Plot overapproximation
+            A = ctrl_result.A_union[t][latent_idx][ov_idx]
+            b = ctrl_result.b_union[t][latent_idx][ov_idx]
+            try:
+                util.npu.plot_h_polyhedron(ax, A, b, ec=color, ls='-', alpha=1)
+            except scipy.spatial.qhull.QhullError:
+                print(f"Failed to plot polyhedron at timestep t={t}")
+
+            # Plot vertices
+            vertices = ctrl_result.vertices[t][latent_idx][ov_idx]
+            X = vertices[:,0:2].T
+            ax.scatter(X[0], X[1], color=color, s=2)
+            X = vertices[:,2:4].T
+            ax.scatter(X[0], X[1], color=color, s=2)
+            X = vertices[:,4:6].T
+            ax.scatter(X[0], X[1], color=color, s=2)
+            X = vertices[:,6:8].T
+            ax.scatter(X[0], X[1], color=color, s=2)
+
+    if extent is not None:
+        ax.set_xlim([extent[0], extent[1]])
+        ax.set_ylim([extent[2], extent[3]])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title(f"t = {t + 1}")
+    ax.set_aspect('equal')
+
+def plot_predictive_control_failure(pred_result, ovehicles,
+        params, ctrl_result, T, ego_bbox, filename='optim_fail'):
+    """
+    Plot predictions and control trajectory for v1 and v2 controls.
+
+    Parameters
+    ==========
+    predict_result : util.AttrDict
+        Payload containing scene, timestep, nodes, predictions, z, latent_probs,
+        past_dict, ground_truth_dict
+    ovehicles : list of OVehicle
+    params : util.AttrDict
+    ctrl_result : util.AttrDict
+    T : int
+    ego_bbox : list of int
+    filename : str
+    """
+    
+    """Plots for paper"""
+    # make the plotting grid tall
+    # fig, axes = plt.subplots(T // 2 + (T % 2), 2, figsize=(10, (10 / 4)*T))
+    # make the plotting grid wide
+    fig, axes = plt.subplots(2, T // 2 + (T % 2), figsize=((10 / 4)*T, 10))
+    axes = axes.ravel()
+    x_min, y_min = params.initial_state.world[:2] - 30
+    x_max, y_max = params.initial_state.world[:2] + 30
+    # make extent fit the scene
+    extent = (x_min, x_max, y_min, y_max)
+    for t, ax in zip(range(T), axes):
+        plot_predictive_control_failure_timestep(
+            ax, pred_result, ovehicles, params,
+            ctrl_result, t, ego_bbox, extent=extent
+        )
+    fig.tight_layout()
+    fig.savefig(os.path.join('out', f"{filename}.png"))
+    fig.clf()
+
 ################ plot_oa_simulation_1
 
 

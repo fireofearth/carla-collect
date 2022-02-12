@@ -25,15 +25,23 @@ import matplotlib.patches as patches
 import torch
 import docplex.mp
 import docplex.mp.model
+import docplex.mp.utils
 
 try:
     from utils.trajectory_utils import prediction_output_to_trajectories
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from ....profiling import profile
-from .util import plot_lcss_prediction, plot_oa_simulation
-from ..util import get_approx_union, get_ovehicle_color_set, get_vertices_from_centers
+from .util import (
+    plot_lcss_prediction,
+    plot_predictive_control_failure,
+    plot_oa_simulation
+)
+from ..util import (
+    get_approx_union,
+    get_ovehicle_color_set,
+    get_vertices_from_centers
+)
 from ...dynamics.bicycle_v2 import VehicleModel
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
@@ -44,6 +52,8 @@ from ....generate.scene import OnlineConfig
 from ....generate.scene.v2_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
+from ....profiling import profile
+from ....exception import InSimulationException
 
 # Local libraries
 import carla
@@ -760,36 +770,60 @@ class MidlevelAgent(AbstractDataCollector):
         # model.print_solution()
 
         """Extract solution"""
-        cost = cost.solution_value
-        f = lambda x: x if isinstance(x, numbers.Number) else x.solution_value
-        U_star = util.obj_vectorize(f, U)
-        X_star = util.obj_vectorize(f, X)
-        return util.AttrDict(
-            cost=cost, U_star=U_star, X_star=X_star, goal=goal,
-            A_union=A_union, b_union=b_union, vertices=vertices
-        )
+        try:
+            cost = cost.solution_value
+            f = lambda x: x if isinstance(x, numbers.Number) else x.solution_value
+            U_star = util.obj_vectorize(f, U)
+            X_star = util.obj_vectorize(f, X)
+            return util.AttrDict(
+                cost=cost, U_star=U_star, X_star=X_star, goal=goal,
+                A_union=A_union, b_union=b_union, vertices=vertices
+            ), None
+        except docplex.mp.utils.DOcplexException as e:
+            # TODO: check model for infeasible solution
+            # docplex.util.environment.logger:environment.py:627 Notify end solve,
+            # status=JobSolveStatus.INFEASIBLE_SOLUTION, solve_time=None
+            return util.AttrDict(
+                cost=None, U_star=None, X_star=None,
+                goal=goal, A_union=A_union, b_union=b_union, vertices=vertices
+            ), InSimulationException("Optimizer failed to find a solution")
 
-    def __plot_scenario(self, pred_result, ovehicles, params, ctrl_result):
-        filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
+    def __plot_scenario(
+        self, pred_result, ovehicles, params, ctrl_result, error=None
+    ):
         lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
         ego_bbox = np.array([lon, lat])
         params.update(self.__params)
-        plot_lcss_prediction(pred_result, ovehicles, params, ctrl_result,
-                self.__control_horizon, ego_bbox, filename=filename)
+        if error:
+            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_optim_fail"
+            plot_predictive_control_failure(
+                pred_result, ovehicles, params, ctrl_result,
+                self.__control_horizon, ego_bbox, filename=filename
+            )
+        else:
+            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
+            plot_lcss_prediction(
+                pred_result, ovehicles, params, ctrl_result,
+                self.__control_horizon, ego_bbox, filename=filename
+            )
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)
         params = self.make_local_params(frame, ovehicles)
-        ctrl_result = self.do_highlevel_control(params, ovehicles)
-
-        """use control input next round for warm starting."""
-        self.__U_warmstarting = ctrl_result.U_star
+        ctrl_result, error = self.do_highlevel_control(params, ovehicles)
 
         if self.plot_scenario:
             """Plot scenario"""
-            self.__plot_scenario(pred_result, ovehicles, params, ctrl_result)
+            self.__plot_scenario(
+                pred_result, ovehicles, params, ctrl_result, error=error
+            )
+        if error:
+            raise error
+
+        """use control input next round for warm starting."""
+        self.__U_warmstarting = ctrl_result.U_star
 
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""

@@ -19,7 +19,7 @@ from collect.generate.scene.v3_2.trajectron_scene import (
 
 """Test the midlevel controller v6.
 
-pytest  tests/20Hz/test_planner_v6.py::test_Town03_scenario[intersection_3-ph6_step1_np100]
+pytest tests/20Hz/test_planner_v6.py::test_Town03_scenario[intersection_3-ph6_step1_np100]
 """
 
 class ScenarioParameters(object):
@@ -256,7 +256,7 @@ SCENARIO_intersection_3 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
-        spawn_shifts=[-5, 17],
+        spawn_shifts=[-5, 17-13],
         n_burn_interval=5,
         run_interval=25,
         controls=CONTROLS_intersection_3,

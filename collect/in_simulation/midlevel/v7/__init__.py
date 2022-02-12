@@ -45,6 +45,7 @@ from ....generate.scene import OnlineConfig
 from ....generate.scene.v2_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
+from ....exception import InSimulationException
 
 # Local libraries
 import carla
