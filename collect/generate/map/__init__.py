@@ -40,6 +40,15 @@ class MapDataExtractor(object):
     """Utility class to extract properties of the CARLA map."""
 
     def __init__(self, carla_world, carla_map):
+        """Constructor.
+        
+        Parameters
+        ==========
+        carla_world: carla.World
+            CARLA World.
+        carla_map: carla.Map
+            CARLA Map.
+        """
         self.carla_world = carla_world
         self.carla_map = carla_map
     
@@ -56,7 +65,21 @@ class MapDataExtractor(object):
         return w.lane_id * waypoint.lane_id < 0
 
     def extract_road_polygons_and_lines(self, sampling_precision=0.05):
-        """Extract road white and yellow dividing lines, and road polygons."""
+        """Extract road white and yellow dividing lines, and road polygons.
+
+        Parameters
+        ==========
+        sampling_precision : float
+            Space between sampling points to create road data.
+
+        Returns
+        =======
+        util.AttrDict
+            Payload of road network information with the following keys:
+            - road_polygons: list of road polygons (closed), each represented as array of shape (?, 2)
+            - yellow_lines: list of white road lines, each represented as array of shape (?, 2)
+            - white_lines: list of white road lines, each represented as array of shape (?, 2)
+        """
         road_polygons = []
         yellow_lines  = []
         white_lines   = []

@@ -10,7 +10,6 @@ import scipy.interpolate
 import carla
 import utility as util
 import utility.npu
-import utility.npu
 import carlautil
 
 

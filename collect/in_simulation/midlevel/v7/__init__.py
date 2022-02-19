@@ -1,6 +1,9 @@
 """
-v6 does original approach
+v7 does contingency planning
 
+    - option to do contingency planning
+        + multiple coinciding control
+        + randomized multiple coinciding control
     - bicycle model with steering as control
     - LTV approximation about nominal path
     - Applies curved road boundaries using segmented polytopes.
