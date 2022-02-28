@@ -9,10 +9,15 @@ import utility as util
 import carlautil
 import carlautil.debug
 
-from ..label import ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel
-from ..label import SampleLabelMap, SampleLabelFilter
-from ..label import SegmentationLabel
-from .road import get_road_segment_enclosure, cover_along_waypoints_fixedsize
+from ..label import (
+    ScenarioIntersectionLabel, ScenarioSlopeLabel, BoundingRegionLabel,
+    SampleLabelMap, SampleLabelFilter, SegmentationLabel
+)
+from .road import (
+    get_road_segment_enclosure,
+    cover_along_waypoints_fixedsize,
+    RoadBoundaryConstraint
+)
 from ...visualize.trajectron import render_entire_map, render_map_crop
 
 CARLA_MAP_NAMES = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
@@ -235,40 +240,92 @@ class MapQuerier(ABC):
                 slope_type=slope_type,
                 bounding_type=self.at_bounding_box_to_label(actor),
                 slope_pitch=slope_pitch)
-    
+
     def road_segment_enclosure_from_actor(self, actor, tol=2.0):
         """Get box enclosure from straight road.
         
-        TODO: data should be fliped about x-axis
+        TODO: data should be flipped about x-axis
         """
         t = actor.get_transform()
         wp = self.carla_map.get_waypoint(t.location)
         return get_road_segment_enclosure(wp, tol=tol)
     
-    def curved_road_segments_enclosure_from_actor(self, actor, max_distance, choices=[],
-            flip_x=False, flip_y=False):
-        """Get segmented enclosure from curved road.
+    def curved_road_segments_enclosure_from_actor(
+        self, actor: carla.Actor, max_distance: float, choices=[], flip_x=False, flip_y=False
+    ) -> util.AttrDict:
+        """Get segmented enclosure of fixed size from curved road.
 
         Parameters
         ==========
+        actor : carla.Actor
+            Position of actor to get starting waypoint.
         max_distance : float
             The max distance of the path starting from `start_wp`. Use to specify length of path.
         choices : list of int
             The indices of the turns to make when reaching a fork on the road network.
             `choices[0]` is the index of the first turn, `choices[1]` is the index of the second turn, etc.
+
+        Returns
+        =======
+        util.AttrDict
+            Container of road segment properties.
+            - spline : scipy.interpolate.CubicSpline
+                The spline representing the path the vehicle should motion plan on.
+            - polytopes : list of (ndarray, ndarray)
+                List of polytopes in H-representation (A, b)
+                where x is in polytope if Ax <= b.
+            - distances : ndarray
+                The distances along the spline to follow from nearest endpoint
+                before encountering corresponding covering polytope in index.
+            - positions : ndarray
+                The 2D positions of center of the covering polytope in index.
         """
         t = actor.get_transform()
         wp = self.carla_map.get_waypoint(t.location)
         wp = wp.previous(5)[0]
         lane_width = wp.lane_width
-        return cover_along_waypoints_fixedsize(wp, choices, max_distance + 7, lane_width,
-                flip_x=flip_x, flip_y=flip_y)
+        return cover_along_waypoints_fixedsize(
+            wp, choices, max_distance + 7, lane_width, flip_x=flip_x, flip_y=flip_y
+        )
+
+    def road_boundary_constraints_from_actor(
+        self, actor: carla.Actor, max_distance: float, choices=[], flip_x=False, flip_y=False
+    ) -> RoadBoundaryConstraint:
+        """Get segmented enclosure of fixed size from curved road.
+
+        Parameters
+        ==========
+        actor : carla.Actor
+            Position of actor to get starting waypoint.
+        max_distance : float
+            The max distance of the path starting from `start_wp`. Use to specify length of path.
+        choices : list of int
+            The indices of the turns to make when reaching a fork on the road network.
+            `choices[0]` is the index of the first turn, `choices[1]` is the index of the second turn, etc.
+        
+        Returns
+        =======
+        RoadBoundaryConstraint
+            The road boundary constraints.
+        
+        TODO: MapQuerier.road_segment_enclosure_from_actor() and
+        MapQuerier.curved_road_segments_enclosure_from_actor()
+        should be refactored to use RoadBoundaryConstraint as a factory.
+        """
+        t = actor.get_transform()
+        wp = self.carla_map.get_waypoint(t.location)
+        wp = wp.previous(5)[0]
+        lane_width = wp.lane_width
+        return RoadBoundaryConstraint(
+            wp, max_distance + 7, lane_width, choices, flip_x=flip_x, flip_y=flip_y
+        )
 
     def render_map(self, ax, extent=None):
         """Render the map.
 
         Parameters
         ==========
+        ax : matplotlib.axes.Axes
         extent : tuple of int
             The extent of the map to render of form (x_min, x_max, y_min, y_max) in meters.
             If not passed, then render entire map.
