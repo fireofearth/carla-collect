@@ -6,11 +6,8 @@ import utility as util
 from tests import (
     LoopEnum, ScenarioParameters, CtrlParameters
 )
-from . import PlannerScenario
-from collect.generate import get_all_vehicle_blueprints
-from collect.generate import NaiveMapQuerier
+from tests.Hz20 import PlannerScenario
 from collect.in_simulation.midlevel.v8 import MidlevelAgent
-from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v3_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
@@ -29,9 +26,9 @@ SCENARIO_intersection_3 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
-        spawn_shifts=[-5, 17],
+        spawn_shifts=[-5, 21],
         n_burn_interval=5,
-        run_interval=25,
+        run_interval=20,
         controls=CONTROLS_intersection_3,
         turn_choices=[1],
         max_distance=75,

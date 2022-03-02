@@ -101,10 +101,10 @@ class PlannerScenario(object):
                 log_agent=False,
                 log_cplex=False,
                 plot_scenario=True,
-                plot_simulation=True,
+                plot_simulation=False,
                 plot_overapprox=False,
                 scene_builder_cls=self.scene_builder_cls,
-                scene_config=online_config
+                scene_config=online_config,
                 **self.scenario_params,
                 **self.ctrl_params
             )

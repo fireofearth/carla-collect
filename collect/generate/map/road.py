@@ -477,7 +477,7 @@ class RoadBoundaryConstraint(object):
                 where x is in polytope if Ax <= b.
             - segment_lengths : list of float
                 Lengths of spline segments covered by the polytope.
-            - mask : list of bool
+            - mask : ndarray of bool
                 True if segment covers a junction, False otherwise.
             - distances : list of float
                 The distances along the splines to follow from nearest endpoint
@@ -546,14 +546,15 @@ class RoadBoundaryConstraint(object):
         return util.AttrDict(
             polytopes=polytopes,
             segment_lengths=segment_lengths,
-            mask=mask,
+            mask=np.array(mask),
             distances=postprocess_distances,
             positions=np.mean(np.stack(vertex_set), axis=1),
             ids=ids
         )
     
     def __init__(
-        self, start_wp, max_distance, lane_width, choices=[], flip_x=False, flip_y=False
+        self, start_wp, max_distance, lane_width,
+        choices=[], flip_x=False, flip_y=False
     ):
         """Constructor.
     
@@ -611,7 +612,7 @@ class RoadBoundaryConstraint(object):
             self.splines.append(spline)
             self.dsplines.append(dspline)
             self.ddsplines.append(ddspline)
-        self.road_segs = self.cover_along_waypoints_varyingsize()
+        self.road_segs = self.cover_along_path_varyingsize()
         
     @property
     def path_length(self):
@@ -636,7 +637,7 @@ class RoadBoundaryConstraint(object):
                 The segments covering sufficient parts of the path.
             - polytope_ids : list of int
                 The IDs of the polytops corresponding to RoundBoundaryConstraint.road_segs
-            - mask : list of bool
+            - mask : ndarray of bool
                 Mask of True whether a polytopes cover a junction, False otherwise.
             - goal : ndarray
                 The final destination goal from current position.

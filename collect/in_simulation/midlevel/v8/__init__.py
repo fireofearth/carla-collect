@@ -655,12 +655,13 @@ class MidlevelAgent(AbstractDataCollector):
         constraints = []
         M_big = self.__params.M_big
         T = self.__control_horizon
-        K = self.__params.L, params.K
+        L, K = self.__params.L, params.K
         diag = self.__params.diag
         if self.road_boundary_constraints:
             S_big = M_big * np.sum(Omicron[~segments.mask], axis=0)
+            S_big = np.repeat(S_big[..., None], L, axis=1)
         else:
-            S_big = np.zeros(T, dtype=float)
+            S_big = np.zeros(T, L, dtype=float)
         vertices = self.__compute_vertices(params, ovehicles)
         A_union, b_union = self.__compute_overapproximations(params, ovehicles, vertices)
         for ov_idx, ovehicle in enumerate(ovehicles):
@@ -671,6 +672,13 @@ class MidlevelAgent(AbstractDataCollector):
                     A_obs = A_union[t][latent_idx][ov_idx]
                     b_obs = b_union[t][latent_idx][ov_idx]
                     indices = sum_clu + latent_idx
+
+                    # array (4,) of variables
+                    # print(util.obj_matmul(A_obs, X[t, :2]))
+                    # array (4,) of variables
+                    # print(M_big*(1 - Delta[indices, t]))
+                    # variable
+                    # print(S_big[t])
                     lhs = util.obj_matmul(A_obs, X[t, :2]) + M_big*(1 - Delta[indices, t]) + S_big[t]
                     rhs = b_obs + diag
                     constraints.extend([l >= r for (l,r) in zip(lhs, rhs)])

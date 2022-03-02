@@ -99,7 +99,10 @@ class PlotOAPredictiveControl(object):
                 marker='*', markersize=8, color="yellow")
 
     def __plot_safe_region(self, ax):
-        polytopes = self.ctrl_result.segments.polytopes[self.ctrl_result.segments.mask]
+        polytopes = util.compress(
+            self.ctrl_result.segments.polytopes,
+            ~self.ctrl_result.segments.mask
+        )
         for A, b in polytopes:
             util.npu.plot_h_polyhedron(ax, A, b, fc='none', ec='b')
 

@@ -1,7 +1,7 @@
 """
 v6 does original approach
 
-    - bicycle model with steering as control
+    - Bicycle model with steering as control
     - LTV approximation about nominal path
     - Applies curved road boundaries using segmented polytopes.
 """
