@@ -62,7 +62,8 @@ class PlotOAPredictiveControl(object):
     def __init__(
         self, pred_result, ovehicles, params, ctrl_result, T, ego_bbox, grid_shape="wide"
     ):
-        """Plot predictions and control trajectory for original approach predictive control.
+        """Plot predictions and control trajectory
+        for original approach predictive control.
 
         Parameters
         ==========
@@ -797,6 +798,8 @@ def plot_oa_simulation(
         Partial file name to save plots.
     road_boundary_constraints : bool
         Whether to visualize boundary constrains in plots.
+
+    TODO: NOT UPDATED!
     """
     scene_df = scene_to_df(scene)
     scene_df[['position_x', 'position_y']] += np.array([scene.x_min, scene.y_min])
