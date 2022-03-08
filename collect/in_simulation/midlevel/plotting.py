@@ -69,7 +69,8 @@ def get_ovehicle_color_set(latents=None):
 
 
 class PlotPredictiveControl(object):
-    """ """
+    """Plot predictions and control trajectory
+    for contingency planning predictive control."""
 
     def __init__(
         self,
@@ -82,8 +83,7 @@ class PlotPredictiveControl(object):
         T_coin=None,
         grid_shape="wide",
     ):
-        """Plot predictions and control trajectory
-        for contingency planning predictive control.
+        """Constructor.
 
         Parameters
         ==========
@@ -479,7 +479,8 @@ class PlotPredictiveControl(object):
             fig.clf()
 
 
-class PlotOASimulation(object):
+class PlotSimulation(object):
+    
     def __init__(
         self,
         scene,

@@ -1,3 +1,5 @@
+"""DEPRECATED unused(?) plotting functions"""
+
 # Built-in libraries
 import os
 import logging

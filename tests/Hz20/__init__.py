@@ -28,6 +28,15 @@ from collect.generate.scene.v3_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
 
+DEBUG_SETTINGS = util.AttrDict(
+    plot_boundary=False,
+    log_agent=False,
+    log_cplex=False,
+    plot_scenario=True,
+    plot_simulation=True,
+    plot_overapprox=False,
+)
+
 class PlannerScenario(object):
 
     def __init__(
@@ -97,12 +106,12 @@ class PlannerScenario(object):
                 map_reader,
                 other_vehicle_ids,
                 self.eval_stg,
-                plot_boundary=False,
-                log_agent=False,
-                log_cplex=False,
-                plot_scenario=True,
-                plot_simulation=False,
-                plot_overapprox=False,
+                plot_boundary=DEBUG_SETTINGS.plot_boundary,
+                log_agent=DEBUG_SETTINGS.log_agent,
+                log_cplex=DEBUG_SETTINGS.log_cplex,
+                plot_scenario=DEBUG_SETTINGS.plot_scenario,
+                plot_simulation=DEBUG_SETTINGS.plot_simulation,
+                plot_overapprox=DEBUG_SETTINGS.plot_overapprox,
                 scene_builder_cls=self.scene_builder_cls,
                 scene_config=online_config,
                 **self.scenario_params,

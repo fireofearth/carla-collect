@@ -4,8 +4,6 @@ v8 does original approach with safe region
     - bicycle model with steering as control
     - LTV approximation about nominal path
     - Applies curved road boundaries using segmented polytopes.
-
-TODO: in progress
 """
 # Built-in libraries
 import os
@@ -34,13 +32,13 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from .util import (
-    PlotOAPredictiveControl,
-    plot_oa_simulation
+from ..plotting import (
+    get_ovehicle_color_set,
+    PlotPredictiveControl,
+    PlotSimulation
 )
 from ..util import (
     get_approx_union,
-    get_ovehicle_color_set,
     get_vertices_from_centers
 )
 from ...dynamics.bicycle_v2 import VehicleModel
@@ -336,7 +334,7 @@ class MidlevelAgent(AbstractDataCollector):
             return
         filename = f"agent{self.__ego_vehicle.id}_oa_simulation"
         bbox = self.__params.bbox
-        plot_oa_simulation(
+        PlotSimulation(
             self.__scene_builder.get_scene(),
             self.__map_reader.map_data,
             self.__plot_simulation_data.actual_trajectory,
@@ -344,13 +342,13 @@ class MidlevelAgent(AbstractDataCollector):
             self.__plot_simulation_data.planned_controls,
             self.__plot_simulation_data.goals,
             self.__plot_simulation_data.lowlevel,
-            self.__road_segs,
+            self.__road_boundary.road_segs,
             np.array([bbox.lon, bbox.lat]),
             self.__step_horizon,
             self.__steptime,
             filename=filename,
             road_boundary_constraints=self.road_boundary_constraints,
-        )
+        ).plot_oa()
 
     def destroy(self):
         """Release all the CARLA resources used by this collector."""
@@ -811,17 +809,17 @@ class MidlevelAgent(AbstractDataCollector):
         ego_bbox = np.array([lon, lat])
         params.update(self.__params)
         if error:
-            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_optim_fail"
-            PlotOAPredictiveControl(
+            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_oa_fail"
+            PlotPredictiveControl(
                 pred_result, ovehicles, params, ctrl_result,
                 self.__control_horizon, ego_bbox
-            ).plot_failure(filename=filename)
+            ).plot_oa_failure(filename=filename)
         else:
-            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
-            PlotOAPredictiveControl(
+            filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_oa_predict"
+            PlotPredictiveControl(
                 pred_result, ovehicles, params, ctrl_result,
                 self.__control_horizon, ego_bbox
-            ).plot_prediction(filename=filename)
+            ).plot_oa_prediction(filename=filename)
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
