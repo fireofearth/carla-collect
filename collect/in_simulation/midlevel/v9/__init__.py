@@ -39,7 +39,7 @@ from ....generate.map import MapQuerier
 from ....profiling import profile
 # from .util import plot_multiple_coinciding_controls, plot_oa_simulation
 from ..plotting import (
-    PlotPredictiveControl.,
+    PlotPredictiveControl,
     get_ovehicle_color_set
 )
 from ..util import (
