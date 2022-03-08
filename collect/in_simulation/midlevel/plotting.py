@@ -339,7 +339,7 @@ class PlotPredictiveControl(object):
             self.plot_oa_prediction_timestep(ax, t, X_star, extent=extent)
         fig.tight_layout()
         fig.savefig(os.path.join("out", f"{filename}.png"))
-        fig.clf()
+        plt.close(fig)
 
     def plot_mcc_prediction_timestep(
         self, ax, traj_idx, t, latent_indices, X_star, extent=None
@@ -407,7 +407,7 @@ class PlotPredictiveControl(object):
                 )
             fig.tight_layout()
             fig.savefig(os.path.join("out", f"{filename}_traj{traj_idx + 1}.png"))
-            fig.clf()
+            plt.close(fig)
 
     def plot_failure_timestep(self, ax, t, extent=None):
         self.__render_scene_bev(ax)
@@ -441,7 +441,7 @@ class PlotPredictiveControl(object):
             self.plot_prediction_timestep(ax, t, extent=extent)
         fig.tight_layout()
         fig.savefig(os.path.join("out", f"{filename}.png"))
-        fig.clf()
+        plt.close(fig)
 
     def plot_mcc_failure_timestep(self, ax, traj_idx, t, latent_indices, extent=None):
         self.__render_scene_bev(ax)
@@ -479,7 +479,7 @@ class PlotPredictiveControl(object):
                 )
             fig.tight_layout()
             fig.savefig(os.path.join("out", f"{filename}_traj{traj_idx + 1}.png"))
-            fig.clf()
+            plt.close(fig)
 
 
 class PlotSimulation(object):
@@ -856,7 +856,7 @@ class PlotSimulation(object):
 
         fig.tight_layout()
         fig.savefig(os.path.join("out", f"{self.filename}_idx{frame_idx}.png"))
-        fig.clf()
+        plt.close(fig)
 
     def plot_oa(self):
         """Plot for original approach MPC plans over all simulation steps."""
@@ -953,7 +953,7 @@ class PlotSimulation(object):
 
         fig.tight_layout()
         fig.savefig(os.path.join("out", f"{self.filename}_idx{frame_idx}.png"))
-        fig.clf()
+        plt.close(fig)
 
     def plot_mcc(self):
         """Plot for (R)MCC contingency MPC plans over all simulation steps."""

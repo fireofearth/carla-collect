@@ -483,10 +483,7 @@ VARIABLES_RMCCAgent_ph6_ch1_np100 = pytest.param(
         SCENARIO_roundabout_1
     ]
 )
-# def test_Town03_scenario(scenario_params, agent_constructor, ctrl_params,
-#         carla_Town03_synchronous, eval_env):
 def test_Town03_scenario(scenario_params, agent_constructor, ctrl_params,
         carla_Town03_synchronous, eval_env, eval_stg_cuda):
-    # eval_stg_cuda = None
     scenario(scenario_params, agent_constructor, ctrl_params,
             carla_Town03_synchronous, eval_env, eval_stg_cuda)
