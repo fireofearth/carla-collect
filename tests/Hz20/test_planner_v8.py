@@ -26,8 +26,8 @@ SCENARIO_intersection_3 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
-        spawn_shifts=[-5, 21],
-        n_burn_interval=5,
+        spawn_shifts=[-5, 25],
+        n_burn_interval=10,
         run_interval=20,
         controls=CONTROLS_intersection_3,
         turn_choices=[1],
@@ -81,6 +81,18 @@ VARIABLES_ph6_step1_ncoin1_np100 = pytest.param(
     ),
     id="ph6_step1_ncoin1_np100"
 )
+VARIABLES_ph8_step1_ncoin1_np100 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=8,
+        control_horizon=8,
+        step_horizon=1,
+        n_predictions=100,
+        n_coincide=1,
+        random_mcc=False,
+        loop_type=LoopEnum.CLOSED_LOOP
+    ),
+    id="ph8_step1_ncoin1_np100"
+)
 VARIABLES_ph6_step1_ncoin1_r_np100 = pytest.param(
     CtrlParameters(
         prediction_horizon=6,
@@ -97,6 +109,7 @@ VARIABLES_ph6_step1_ncoin1_r_np100 = pytest.param(
 @pytest.mark.parametrize(
     "ctrl_params",
     [
+        VARIABLES_ph8_step1_ncoin1_np100,
         VARIABLES_ph6_step1_ncoin1_np100,
         VARIABLES_ph6_step1_ncoin1_r_np100
     ]

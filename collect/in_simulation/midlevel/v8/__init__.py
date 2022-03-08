@@ -41,9 +41,9 @@ from ..util import (
     get_approx_union,
     get_vertices_from_centers
 )
-from ...dynamics.bicycle_v2 import VehicleModel
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
+from ...dynamics.bicycle_v2 import VehicleModel
 from ...lowlevel.v3 import VehiclePIDController
 from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint

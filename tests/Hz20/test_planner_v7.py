@@ -329,12 +329,25 @@ VARIABLES_ph6_step1_ncoin1_r_np100 = pytest.param(
     ),
     id="ph6_step1_ncoin1_r_np100"
 )
+VARIABLES_ph8_step1_ncoin1_r_np100 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=8,
+        control_horizon=8,
+        step_horizon=1,
+        n_predictions=100,
+        n_coincide=1,
+        random_mcc=True,
+        loop_type=LoopEnum.CLOSED_LOOP
+    ),
+    id="ph8_step1_ncoin1_r_np100"
+)
 
 @pytest.mark.parametrize(
     "ctrl_params",
     [
         VARIABLES_ph6_step1_ncoin1_np100,
-        VARIABLES_ph6_step1_ncoin1_r_np100
+        VARIABLES_ph6_step1_ncoin1_r_np100,
+        VARIABLES_ph8_step1_ncoin1_r_np100
     ]
 )
 @pytest.mark.parametrize(

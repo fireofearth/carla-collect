@@ -35,13 +35,15 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
-from ....generate.map import MapQuerier
-from ....profiling import profile
-from .util import plot_multiple_coinciding_controls, plot_oa_simulation
-from ..util import get_approx_union, get_ovehicle_color_set, get_vertices_from_centers
-from ...dynamics.bicycle_v2 import VehicleModel
+from ..plotting import (
+    get_ovehicle_color_set,
+    PlotPredictiveControl,
+    PlotSimulation
+)
+from ..util import get_approx_union, get_vertices_from_centers
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
+from ...dynamics.bicycle_v2 import VehicleModel
 from ...lowlevel.v3 import VehiclePIDController
 from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint
@@ -49,6 +51,8 @@ from ....generate.scene import OnlineConfig
 from ....generate.scene.v2_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
+from ....generate.map import MapQuerier
+from ....profiling import profile
 from ....exception import InSimulationException
 
 # Local libraries
@@ -311,14 +315,11 @@ class MidlevelAgent(AbstractDataCollector):
         return self.__sensor.is_listening
 
     def __plot_simulation(self):
-        """
-        TODO: pass Scene to plotting
-        """
         if len(self.__plot_simulation_data.planned_trajectories) == 0:
             return
         filename = f"agent{self.__ego_vehicle.id}_oa_simulation"
         bbox = self.__params.bbox
-        plot_oa_simulation(
+        PlotSimulation(
             self.__scene_builder.get_scene(),
             self.__map_reader.map_data,
             self.__plot_simulation_data.actual_trajectory,
@@ -329,11 +330,11 @@ class MidlevelAgent(AbstractDataCollector):
             self.__road_segs,
             np.array([bbox.lon, bbox.lat]),
             self.__step_horizon,
-            self.__n_coincide,
             self.__steptime,
+            T_coin=self.__n_coincide,
             filename=filename,
             road_boundary_constraints=self.road_boundary_constraints
-        )
+        ).plot_mcc()
 
     def destroy(self):
         """Release all the CARLA resources used by this collector."""
@@ -862,14 +863,14 @@ class MidlevelAgent(AbstractDataCollector):
         )
 
     def __plot_scenario(self, pred_result, ovehicles, params, ctrl_result):
-        filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
         lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__ego_vehicle)
         ego_bbox = np.array([lon, lat])
         params.update(self.__params)
-        plot_multiple_coinciding_controls(
+        filename = f"agent{self.__ego_vehicle.id}_frame{params.frame}_lcss_control"
+        PlotPredictiveControl(
             pred_result, ovehicles, params, ctrl_result,
-            self.__control_horizon, ego_bbox, filename=filename
-        )
+            self.__control_horizon, ego_bbox, T_coin=self.__n_coincide
+        ).plot_mcc_prediction(filename=filename)
 
     # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):

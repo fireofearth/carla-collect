@@ -128,6 +128,9 @@ class PlotPredictiveControl(object):
         )
 
     def __plot_safe_region(self, ax):
+        """Plot safe region if it exists, otherwise skip."""
+        if "segments" not in self.ctrl_result:
+            return
         polytopes = util.compress(
             self.ctrl_result.segments.polytopes, ~self.ctrl_result.segments.mask
         )
