@@ -714,6 +714,17 @@ class MidlevelAgent(AbstractDataCollector):
         return constraints
 
     def compute_obstacle_constraints(self, params, ovehicles, X, Delta, Omicron, segments):
+        """Compute obstacle constraints.
+
+        Parameters
+        ==========
+        X : np.array of docplex.mp.vartype.ContinuousVarType
+            State space plan of shape (N_select, T, nx)
+        Delta : np.array of docplex.mp.vartype.BinaryVarType
+            OV obstacle slack variables of shape (N_select, T, O, L)
+        Omicron : np.array of docplex.mp.vartype.BinaryVarType
+            Road boundary slack variables of shape (N_select, I, T)
+        """
         constraints = []
         N_select, M_big = params.N_select, self.__params.M_big
         T = self.__control_horizon
@@ -721,7 +732,7 @@ class MidlevelAgent(AbstractDataCollector):
         diag = self.__params.diag
         if self.road_boundary_constraints:
             S_big = M_big * np.sum(Omicron[:, ~segments.mask], axis=1)
-            S_big = np.repeat(S_big[..., None], L, axis=1)
+            S_big = np.repeat(S_big[..., None], L, axis=2)
         else:
             S_big = np.zeros(N_select, T, L, dtype=float)
         vertices = self.__compute_vertices(params, ovehicles)
@@ -765,7 +776,6 @@ class MidlevelAgent(AbstractDataCollector):
         for _U, _X in zip(U, X):
             cost += self.compute_objective(_X, _U, goal)
         return cost
-
 
     def do_highlevel_control(self, params, ovehicles):
         """Decide parameters."""
