@@ -6,3 +6,4 @@ cache/
 .ipynb_checkpoints/
 .pytest_cache/
 py37trajectron/
+py38trajectron/

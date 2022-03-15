@@ -32,13 +32,30 @@ from .label import SegmentationLabel, carla_id_maker
 from .scene import SceneBuilder, SceneConfig
 from .scene.v3.trajectron_scene import TrajectronPlusPlusSceneBuilder
 
+SKIP_VEHICLE_NAMES = [
+    "isetta",
+    "microlino",
+    "carlacola",
+    "cybertruck",
+    "t2",
+    "firetruck",
+    "sprinter",
+    "ambulance",
+    "t2_2021",
+]
+
+def keep_blueprint(bp):
+    if int(bp.get_attribute('number_of_wheels')) != 4:
+        return False
+    name = bp.id
+    endswith = util.map_to_list(
+        lambda skip_name: name.endswith(skip_name), SKIP_VEHICLE_NAMES
+    )
+    return not any(endswith)
+
 def get_all_vehicle_blueprints(world):
     blueprints = world.get_blueprint_library().filter('vehicle.*')
-    blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
-    blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
-    blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
-    blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
-    blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+    blueprints = util.filter_to_list(keep_blueprint, blueprints)
     return sorted(blueprints, key=lambda bp: bp.id)
 
 def create_semantic_lidar_blueprint(world):

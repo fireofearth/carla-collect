@@ -1,5 +1,6 @@
 {
-    "python.pythonPath": "${workspaceFolder}/py37trajectron/bin/python",
+    "python.pythonPath": "${workspaceFolder}/py38trajectron/bin/python",
+    "python.defaultInterpreterPath": "${workspaceFolder}/py38trajectron/bin/python",
     "python.autoComplete.extraPaths": [
         "~/src/carla-0.9.11/PythonAPI/carla",
         "~/src/carla-0.9.11/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg",

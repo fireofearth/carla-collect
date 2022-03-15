@@ -155,6 +155,19 @@ class DataGenerator(object):
         
         # Add data collector to a handful of vehicles
         vehicles = self.world.get_actors(vehicle_ids)
+
+        #>>>#########################################
+        # In CARLA 0.9.13 must set this deliberately?
+        self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)
+        self.traffic_manager.global_percentage_speed_difference(0.0)
+        for vehicle in vehicles:
+            self.traffic_manager.auto_lane_change(vehicle, True)
+            self.traffic_manager.ignore_lights_percentage(vehicle, 0.0)
+            self.traffic_manager.ignore_signs_percentage(vehicle, 0.0)
+            self.traffic_manager.ignore_vehicles_percentage(vehicle, 0.0)
+            self.traffic_manager.ignore_walkers_percentage(vehicle, 0.0)
+        #<<<#########################################
+
         vehicles = dict(zip(vehicle_ids, vehicles))
         vehicles_ids_to_data_collect = vehicle_ids[:self.args.n_data_collectors]
 
@@ -208,8 +221,8 @@ class DataGenerator(object):
             
             logging.info("Destroying vehicles.")
             if vehicle_ids:
-                self.client.apply_batch(
-                        [carla.command.DestroyActor(x) for x in vehicle_ids])
+                self.client.apply_batch_sync(
+                        [carla.command.DestroyActor(x) for x in vehicle_ids], True)
 
     def run(self):
         """Main entry point to data collection."""
@@ -223,7 +236,7 @@ class DataGenerator(object):
             settings.synchronous_mode = True
 
             self.traffic_manager.set_synchronous_mode(True)
-            self.traffic_manager.set_global_distance_to_leading_vehicle(1.0)
+            self.traffic_manager.set_global_distance_to_leading_vehicle(5.0)
             self.traffic_manager.global_percentage_speed_difference(0.0)
             if self.args.seed is not None:
                 self.traffic_manager.set_random_device_seed(self.args.seed)        
