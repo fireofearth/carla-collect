@@ -43,7 +43,7 @@ from ..dynamics import (get_state_matrix, get_input_matrix,
         get_output_matrix, get_feedforward_matrix)
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
-from ...lowlevel.v1_1 import LocalPlanner
+from ...lowlevel.v2 import VehiclePIDController
 from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint
 from ....generate.map import NaiveMapQuerier
@@ -78,14 +78,14 @@ class MidlevelAgent(AbstractDataCollector):
         params.M_big = 1000
         # Control variable for solver, setting max acceleration
         # TODO: hardcoded
-        params.max_a = 2
-        params.min_a = -7
+        params.max_a = 4
+        params.min_a = -8
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
         wheels = physics_control.wheels
         params.limit_delta = np.deg2rad(wheels[0].max_steer_angle)
         params.max_delta = 0.5*params.limit_delta
-        # Since vehicle has a max steering rate (unknown, add a reasonable constraint).
+        # Since vehicle has a max steering rate with greater value than max_steer_angle.
         params.max_delta_chg = 0.16*params.limit_delta
         # TODO: what are the com values?
         # (0.60, 0.0, -0.25)
@@ -239,7 +239,7 @@ class MidlevelAgent(AbstractDataCollector):
         self.__lidar_feeds = collections.OrderedDict()
         self.__prediction_timestep = self.__scene_config.record_interval \
                 * self.__world.get_settings().fixed_delta_seconds
-        self.__local_planner = LocalPlanner(self.__ego_vehicle)
+        self.__local_planner = VehiclePIDController(self.__ego_vehicle)
         self.__params = self.__make_global_params()
 
         self.__setup_curved_road_segmented_boundary_conditions(
@@ -498,7 +498,7 @@ class MidlevelAgent(AbstractDataCollector):
         many polytopes to use as constraints. what happens when speed
         limit changes?
         TODO: speed limit is not enough to infer distance to motion plan.
-        Also need curvature since car slows down on road.
+        Also need curvature since car slows down on turns.
         """
         n_segs = len(self.__road_segs.polytopes)
         segment_length = self.__road_segs.segment_length
@@ -845,19 +845,10 @@ class MidlevelAgent(AbstractDataCollector):
         """use control input next round for warm starting."""
         # self.U_warmstarting = ctrl_result.U_star
 
-        """Get trajectory and velocity"""
-        trajectory = []
-        velocity = []
-        X = np.concatenate((params.initial_state.world[None], ctrl_result.X_star))
-        n_steps = X.shape[0]
-        for t in range(1, n_steps):
-            x, y, yaw = X[t, :3]
-            y = -y # flip about x-axis again to move back to UE coordinates
-            # flip about x-axis again to move back to UE coordinates
-            yaw = np.rad2deg(util.reflect_radians_about_x_axis(yaw))
-            transform = carla.Transform(carla.Location(x=x, y=y), carla.Rotation(yaw=yaw))
-            trajectory.append(transform)
-            velocity.append(X[t, 3])
+        """Get targets for PID controllers."""
+        target_speeds = ctrl_result.X_star[:, 3]
+        target_angles = ctrl_result.X_star[:, 2]
+        target_angles = util.reflect_radians_about_x_axis(target_angles)
 
         if self.plot_scenario:
             """Plot scenario"""
@@ -865,13 +856,14 @@ class MidlevelAgent(AbstractDataCollector):
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""
             if self.__agent_type == "oa":
+                X = np.concatenate((params.initial_state.world[None], ctrl_result.X_star))
                 self.__plot_simulation_data.planned_trajectories[frame] = X
                 self.__plot_simulation_data.planned_controls[frame] = ctrl_result.U_star
                 self.__plot_simulation_data.goals[frame] = ctrl_result.goal
-                self.__plot_simulation_data
             else:
                 raise NotImplementedError()
-        return trajectory, velocity
+
+        return target_speeds, target_angles
 
     def do_first_step(self, frame):
         self.__first_frame = frame
@@ -910,20 +902,26 @@ class MidlevelAgent(AbstractDataCollector):
                 """Initially collect data without doing any control to the vehicle."""
                 pass
             elif (frame_id - self.__n_burn_interval) % self.__step_horizon == 0:
-                trajectory, velocity = self.__compute_prediction_controls(frame)
-                self.__local_planner.set_plan(trajectory,
-                        self.__scene_config.record_interval, velocity=velocity)
+                target_speeds, target_angles = self.__compute_prediction_controls(frame)
+                self.__local_planner.set_plan(
+                    target_speeds,
+                    target_angles,
+                    self.__scene_config.record_interval
+                )
             if self.plot_simulation:
                 """Save actual trajectory for final plotting"""
-                payload = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle, flip_y=True)
+                payload = carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(
+                    self.__ego_vehicle, flip_y=True
+                )
                 payload = np.array([
-                        payload[0], payload[1], payload[13],
-                        self.get_current_velocity(),
-                        self.get_current_steering()])
+                    payload[0], payload[1], payload[13],
+                    self.get_current_velocity(),
+                    self.get_current_steering()]
+                )
                 self.__plot_simulation_data.actual_trajectory[frame] = payload
 
         if not control:
-            control = self.__local_planner.run_step()
+            control = self.__local_planner.step()
         self.__ego_vehicle.apply_control(control)
 
     def remove_scene_builder(self, first_frame):

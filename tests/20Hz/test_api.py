@@ -10,6 +10,8 @@ import utility as util
 import carla
 import carlautil
 
+"""Test CARLA Python API for vehicle controller.
+"""
 
 class ScenarioParameters(object):
     """Scenario parameters.
@@ -66,7 +68,6 @@ def scenario(scenario_params, carla_synchronous):
             )
         )
         
-
         # NOTE: ego_vehicle.get_speed_limit() documentation says m/s. This is incorrect.
         logging.info(f"Vehicle speed limit is {ego_vehicle.get_speed_limit()} km/h")
 

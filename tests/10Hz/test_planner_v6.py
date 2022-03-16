@@ -18,12 +18,12 @@ from collect.generate.scene import OnlineConfig
 from collect.generate.scene.v3_2.trajectron_scene import (
         TrajectronPlusPlusSceneBuilder)
 
-"""Test the midlevel controller v6.
+"""Test the midlevel planner v6.
 
 pytest \
     --log-cli-level=INFO \
     --capture=tee-sys \
-    tests/test_controller_v6.py::test_Town03_scenario[intersection_3-OAAgent_ph4_ch1_np100]
+    tests/test_planner_v6.py::test_Town03_scenario[intersection_3-OAAgent_ph4_ch1_np100]
 """
 
 class OAAgent(MidlevelAgent):

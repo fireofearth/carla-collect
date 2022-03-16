@@ -13,6 +13,7 @@ try:
 except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
+from tests import MODEL_SPEC_4, TRAJECTRONPP_DIR
 from collect.in_simulation import load_model
 from collect.generate.scene.v2_1.trajectron_scene import standardization
 
@@ -22,26 +23,7 @@ CARLA_MAP = 'Town03'
 DELTA = 0.1
 SEED = 1
 
-# os.environ['TRAJECTRONPP_DIR']
-model_spec_1 = util.AttrDict(
-        path='experiments/nuScenes/models/20210621/models_19_Mar_2021_22_14_19_int_ee_me_ph8',
-        desc="Base +Dynamics, Map off-the-shelf model trained on NuScenes")
-
-model_spec_2 = util.AttrDict(
-        path='experiments/nuScenes/models/models_20_Jul_2021_11_48_11_carla_v3_0_1_base_distmap_ph8',
-        desc="Base +Map model w/ heading fix trained on small CARLA synthesized")
-
-model_spec_3 = util.AttrDict(
-        path='experiments/nuScenes/models/20210803/models_03_Aug_2021_13_42_51_carla_v3-1-1_base_distmapV4_ph8',
-        desc="Base +MapV4-1 model with heading fix, PH=8, K=25 "
-             "(trained on smaller carla v3-1-1 dataset)")
-
-model_spec_4 = util.AttrDict(
-        path='experiments/nuScenes/models/20210816/models_17_Aug_2021_13_25_38_carla_v3-1-2_base_distmapV4_modfm_K15_ph8',
-        desc="Base +MapV4 model with heading fix, PH=8, K=15 "
-             "(trained on carla v3-1-2 dataset)")
-
-model_spec = model_spec_4
+model_spec = MODEL_SPEC_4
 
 @pytest.fixture(scope="module")
 def eval_env():
@@ -59,8 +41,7 @@ def eval_env():
 @pytest.fixture(scope="module")
 def eval_stg(eval_env):
     """Load model in CPU."""
-    model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
-            model_spec.path)
+    model_path = os.path.join(TRAJECTRONPP_DIR, model_spec.path)
     eval_stg, stg_hyp = load_model(
             model_path, eval_env, ts=20)
     logging.info(model_spec.desc)
@@ -69,8 +50,7 @@ def eval_stg(eval_env):
 @pytest.fixture(scope="module")
 def eval_stg_cuda(eval_env):
     """Load model in GPU."""
-    model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
-            model_spec.path)
+    model_path = os.path.join(TRAJECTRONPP_DIR, model_spec.path)
     eval_stg, stg_hyp = load_model(
             model_path, eval_env, ts=20, device='cuda')
     return eval_stg

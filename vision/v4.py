@@ -9,6 +9,8 @@ import logging
 import time
 import math
 import random
+import functools
+import json
 
 import numpy as np
 import shapely
@@ -22,88 +24,7 @@ import carlautil
 
 from . import VisionException
 
-class DataGenerator(object):
-    # 8 maps
-    MAP_NAMES = ["Town01", "Town02", "Town03", "Town04",
-                 "Town05", "Town06", "Town07", "Town10HD"]
-
-    def get_random_shuffled_spawn_points(self, carla_map):
-        spawn_points = carla_map.get_spawn_points()
-        random.shuffle(spawn_points)
-        return spawn_points
-
-    def load_worldmap(self, world_name):
-        world = self.client.load_world(world_name)
-        carla_map = world.get_map()
-        weather = world.get_weather()
-        spawn_points = self.get_random_shuffled_spawn_points(carla_map)
-        return world, carla_map, weather, spawn_points
-
-    def __init__(self, config):
-        self.config = config
-        self.debug = self.config.debug
-        self.add_pedestrian = self.config.add_pedestrian
-        self.n_scenes = self.config.n_scenes
-        self.n_frames = self.config.n_frames
-        self.show_demos = self.config.demo
-        # delta : float
-        #     Step size for synchronous mode.
-        self.delta = 0.1
-        self.client = carla.Client(self.config.host, self.config.port)
-        self.client.set_timeout(10.0)
-        self.world, self.carla_map, self.original_weather, self.spawn_points \
-                = self.load_worldmap(self.MAP_NAMES[0])
-        self.traffic_manager = self.client.get_trafficmanager(8000)
-        self.perturb_spawn_point = True
-        self.near_r = 7.0
-        self.far_r = 8.0
-        if self.add_pedestrian:
-            self.max_shift =  2.0
-        else:
-            self.max_shift = 0.5
-        self.ped_halfwidth = 0.5
-        self.dataset_specs = util.AttrDict(
-            add_pedestrian=self.add_pedestrian,
-            n_scenes=self.n_scenes,
-            n_frames=self.n_frames,
-            perturb_spawn_point=self.perturb_spawn_point,
-            near_r=self.near_r,
-            far_r=self.far_r,
-            max_shift=self.max_shift,
-            scenes={}
-        )
-
-    def attach_camera_to_spectator(self, scene_idx):
-        os.makedirs(f"out/snapshots/{self.carla_map.name}/scene{scene_idx}", exist_ok=True)
-        blueprint = self.world.get_blueprint_library().find("sensor.camera.rgb")
-        blueprint.set_attribute("image_size_x", "256")
-        blueprint.set_attribute("image_size_y", "256")
-        blueprint.set_attribute("fov", "30")
-        blueprint.set_attribute("sensor_tick", "0.1")
-        sensor = self.world.spawn_actor(
-            blueprint, carla.Transform(), attach_to=self.world.get_spectator()
-        )
-
-        def save_snapshot(image):
-            image.save_to_disk(f"out/snapshots/{self.carla_map.name}/scene{scene_idx}/frame{image.frame}.png")
-
-        return sensor, save_snapshot, f"{self.carla_map.name}/scene{scene_idx}"
-
-    def get_vehicle_blueprints(self):
-        blueprints = self.world.get_blueprint_library().filter("vehicle.*")
-        blueprints = [x for x in blueprints if int(x.get_attribute("number_of_wheels")) == 4]
-        blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
-        blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
-        blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
-        blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
-        blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
-        blueprints = [x for x in blueprints if not x.id.endswith('sprinter')]
-        blueprints = [x for x in blueprints if not x.id.endswith('t2')]
-        return blueprints
-    
-    def get_pedestrian_blueprints(self):
-        return self.world.get_blueprint_library().filter("walker.pedestrian.*")
-
+class DemoMixin(object):
     @staticmethod
     def demo_azimuthal_rotation(world, spectator, vehicle, iterations=300):
         theta = np.linspace(0, 2*math.pi, iterations)
@@ -111,7 +32,7 @@ class DataGenerator(object):
         r = 4
         for jdx in range(iterations):
             transform = carlautil.spherical_to_camera_watcher_transform(
-                        r, theta[jdx], phi, location=vehicle.get_location())
+                        r, theta[jdx], phi, pin=vehicle.get_location())
             transform = carlautil.strafe_transform(transform, right=0, above=0)
             spectator.set_transform(transform)
             if jdx == 0 or jdx == iterations - 1:
@@ -126,7 +47,7 @@ class DataGenerator(object):
         r = 4
         for jdx in range(iterations):
             transform = carlautil.spherical_to_camera_watcher_transform(
-                        r, theta, phi[jdx], location=vehicle.get_location())
+                        r, theta, phi[jdx], pin=vehicle.get_location())
             transform = carlautil.strafe_transform(transform, right=0, above=0)
             spectator.set_transform(transform)
             if jdx == 0 or jdx == iterations - 1:
@@ -138,10 +59,10 @@ class DataGenerator(object):
         iterations = 100
         theta = math.pi / 2
         phi = math.pi / 4
-        r = np.linspace(self.near_r, self.far_r, iterations)
+        r = np.linspace(*self.range_r, iterations)
         for jdx in range(iterations):
             transform = carlautil.spherical_to_camera_watcher_transform(
-                        r[jdx], theta, phi, location=vehicle.get_location())
+                        r[jdx], theta, phi, pin=vehicle.get_location())
             transform = carlautil.strafe_transform(transform, right=0, above=0)
             spectator.set_transform(transform)
             if jdx == 0 or jdx == iterations - 1:
@@ -153,12 +74,12 @@ class DataGenerator(object):
         iterations = 100
         theta = math.pi / 2
         phi = math.pi / 4
-        r = np.linspace(self.near_r, self.far_r, iterations)
+        r = np.linspace(*self.range_r, iterations)
         near_frac = vehicle.bounding_box.extent.x
-        ratio_f = near_frac / self.near_r
+        ratio_f = near_frac / self.range_r[0]
         for jdx in range(iterations):
             transform = carlautil.spherical_to_camera_watcher_transform(
-                        r[jdx], theta, phi, location=vehicle.get_location())
+                        r[jdx], theta, phi, pin=vehicle.get_location())
             transform = carlautil.strafe_transform(transform,
                 right=r[jdx]*ratio_f - near_frac,
                 above=r[jdx]*ratio_f - near_frac)
@@ -175,7 +96,7 @@ class DataGenerator(object):
         iterations = 300
         theta = np.linspace(-math.pi/2, (3/2)*math.pi, iterations)
         phi = (1/3)*math.pi
-        r = (self.near_r + self.far_r) / 2.
+        r = sum(self.range_r) / 2.
         original_lightstate = vehicle.get_light_state()
         vls = carla.VehicleLightState
         light_state = vls(vls.LowBeam | vls.Interior | vls.Reverse | vls.Position)
@@ -187,7 +108,7 @@ class DataGenerator(object):
         for jdx in range(iterations):
             # set spectator orientation and position
             transform = carlautil.spherical_to_camera_watcher_transform(
-                        r, theta[jdx], phi, location=vehicle.get_location())
+                        r, theta[jdx], phi, pin=vehicle.get_location())
             transform = carlautil.strafe_transform(transform, right=0, above=0)
             spectator.set_transform(transform)
             
@@ -203,7 +124,7 @@ class DataGenerator(object):
         iterations = 150
         theta = np.linspace(-math.pi/2, math.pi/2, iterations)
         phi = math.pi / 4
-        r = (self.near_r + self.far_r) / 2.
+        r = sum(self.range_r) / 2.
         sun_altitude_angles = np.linspace(1, -19, iterations)
         original_lightstate = vehicle.get_light_state()
         light_types = ["Position", "LowBeam", "HighBeam", "Brake",
@@ -215,7 +136,7 @@ class DataGenerator(object):
             for jdx in range(iterations):
                 # set spectator orientation and position
                 transform = carlautil.spherical_to_camera_watcher_transform(
-                            r, theta[jdx], phi, location=vehicle.get_location())
+                            r, theta[jdx], phi, pin=vehicle.get_location())
                 transform = carlautil.strafe_transform(transform, right=0, above=0)
                 spectator.set_transform(transform)
                 # set weather
@@ -229,6 +150,132 @@ class DataGenerator(object):
                     self.world.wait_for_tick()
         
         vehicle.set_light_state(original_lightstate)
+
+class DataGenerator(DemoMixin):
+    # 8 maps
+    MAP_NAMES = ["Town01", "Town02", "Town03", "Town04",
+                 "Town05", "Town06", "Town07", "Town10HD"]
+
+    def get_random_shuffled_spawn_points(self, carla_map):
+        spawn_points = carla_map.get_spawn_points()
+        random.shuffle(spawn_points)
+        return spawn_points
+
+    def load_worldmap(self, world_name):
+        world = self.client.load_world(world_name)
+        carla_map = world.get_map()
+        weather = world.get_weather()
+        spawn_points = self.get_random_shuffled_spawn_points(carla_map)
+        return world, carla_map, weather, spawn_points
+    
+    # @staticmethod
+    # def augment_arguments(argparser):
+    #     """Add arguments to argparse.ArgumentParser"""
+    #     argparser.add_argument(
+    #         "--range-r", nargs='+', type=float, default=[7.0, 8.0]
+    #     )
+    #     argparser.add_argument(
+    #         "--range-theta", nargs='+', type=float, default=[0, 2*math.pi]
+    #     )
+        
+    def __init__(self, config):
+        self.config = config
+        self.debug = self.config.debug
+        self.out_path = "out/snapshots"
+        # add_pedestrian : bool
+        #   Whether to place a pedestrian in the scene.
+        self.add_pedestrian = self.config.add_pedestrian
+        # n_scenes : int
+        #   Number of scenes. Scenes are split between existing maps.
+        #   The camera is readjusted for each frame in while keeping the scene unchanged.
+        self.n_scenes = self.config.n_scenes
+        # n_frames : int
+        #   Number of frames to capture per scene.
+        self.n_frames = self.config.n_frames
+        self.show_demos = self.config.demo
+        # delta : float
+        #   Step size for synchronous mode.
+        self.delta = 0.1
+        self.client = carla.Client(self.config.host, self.config.port)
+        self.client.set_timeout(10.0)
+        self.world, self.carla_map, self.original_weather, self.spawn_points \
+                = self.load_worldmap(self.MAP_NAMES[0])
+        self.traffic_manager = self.client.get_trafficmanager(8000)
+        self.perturb_spawn_point = True
+        # range_r : list of float
+        #   Near and far distance range from camera to placement center.
+        self.range_r = [7.0, 8.0]
+        # self.range_r = [7.0, 7.0]
+        # range_theta : list of float
+        #   Range of camera azimuth from placement center.
+        self.range_theta = [0, 2*math.pi]
+        # self.range_theta = [0, 0]
+        # range_phi : list of float
+        #   Range of camera altitude from placement center.
+        self.range_phi = [(5/14)*math.pi, (1/6)*math.pi]
+        # self.range_phi = [(5/14)*math.pi, (5/14)*math.pi]
+        # max_shift : float
+        #   Range of x and y shifts of foreground objects from center of camera view.
+        if self.add_pedestrian:
+            self.max_shift =  2.0
+        else:
+            # self.max_shift = 0.5
+            self.max_shift = 2.0
+        # ped_halfwidth : size of pedestrian bounding box
+        self.ped_halfwidth = 0.5
+        # camera_attributes : attributes to set when creating camera
+        self.camera_attributes = util.AttrDict(
+            image_size_x="256",
+            image_size_y="256",
+            fov="30",
+            sensor_tick="0.1"
+        )
+        # dataset_specs : save upon creation of dataset for reproduction
+        self.dataset_specs = util.AttrDict(
+            map_names=self.MAP_NAMES,
+            delta=self.delta,
+            add_pedestrian=self.add_pedestrian,
+            n_scenes=self.n_scenes,
+            n_frames=self.n_frames,
+            perturb_spawn_point=self.perturb_spawn_point,
+            range_r=self.range_r,
+            range_theta=self.range_theta,
+            range_phi=self.range_phi,
+            max_shift=self.max_shift,
+            ped_halfwidth=self.ped_halfwidth,
+            camera_attributes=self.camera_attributes,
+            tally={name: 0 for name in self.MAP_NAMES}
+        )
+
+    def save_snapshot(self, map_name, scene_idx, image):
+        self.dataset_specs.tally[map_name] += 1
+        image.save_to_disk(f"{self.out_path}/{map_name}/scene{scene_idx}/frame{image.frame}.png")
+
+    def attach_camera_to_spectator(self, scene_idx):
+        os.makedirs(f"{self.out_path}/{self.carla_map.name}/scene{scene_idx}", exist_ok=True)
+        blueprint = self.world.get_blueprint_library().find("sensor.camera.rgb")
+        for k, v in self.camera_attributes.items():
+            blueprint.set_attribute(k, v)
+        sensor = self.world.spawn_actor(
+            blueprint, carla.Transform(), attach_to=self.world.get_spectator()
+        )
+        save_snapshot= functools.partial(self.save_snapshot, self.carla_map.name, scene_idx)
+        return sensor, save_snapshot, f"{self.carla_map.name}/scene{scene_idx}"
+
+    def get_vehicle_blueprints(self):
+        blueprints = self.world.get_blueprint_library().filter("vehicle.*")
+        blueprints = [x for x in blueprints if int(x.get_attribute("number_of_wheels")) == 4]
+        blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
+        blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
+        blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
+        blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
+        blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
+        blueprints = [x for x in blueprints if not x.id.endswith('sprinter')]
+        blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+        return blueprints
+    
+    def get_pedestrian_blueprints(self):
+        return self.world.get_blueprint_library().filter("walker.pedestrian.*")
 
     def __get_random_spawn_point(self, idx):
         n_spawn_points = len(self.spawn_points)
@@ -266,30 +313,36 @@ class DataGenerator(object):
             light_state = vls(vls.LowBeam | vls.Interior | vls.Reverse | vls.Position)
             vehicle.set_light_state(light_state)
 
-    def __set_random_frame(self, spectator, location, vehicle=None, strafe_camera=False, xy_shift_camera=True):
-        r = random.uniform(self.near_r, self.far_r)
-        theta = random.uniform(0, 2*math.pi)
-        phi = random.uniform((5/14)*math.pi, (1/6)*math.pi)
+    def __set_random_frame(self, spectator, transform, vehicle=None,
+            strafe_camera=False, xy_shift_camera=True):
+        """
+        TODO: the camera transform should be relative
+        to the yaw of vehicle transform, not just vehicle location
+        """
+        r = random.uniform(*self.range_r)
+        theta = random.uniform(*self.range_theta)
+        phi = random.uniform(*self.range_phi)
+        _transform = carla.Transform(
+            transform.location, carla.Rotation(yaw=transform.rotation.yaw)
+        )
         if xy_shift_camera:
             # NOTE: the Audi A2 has dimensions (3.70 m, 1.79 m)
             x_shift = random.uniform(-self.max_shift, self.max_shift)
             y_shift = random.uniform(-self.max_shift, self.max_shift)
-            location += carla.Location(x=x_shift, y=y_shift)
-
-        transform = carlautil.spherical_to_camera_watcher_transform(
-                r, theta, phi, location=location)
-
+            _transform.location += carla.Location(x=x_shift, y=y_shift)
+        _transform = carlautil.spherical_to_camera_watcher_transform(
+                r, theta, phi, pin=_transform)
         if strafe_camera and vehicle:
             # NOTE: GIRAFFE does not do camera strafing, it does camera shifting
             near_frac = vehicle.bounding_box.extent.x
-            ratio_f = near_frac / self.near_r
+            ratio_f = near_frac / self.range_r[0]
             strafe_amt = r*ratio_f - near_frac
             right_strafe = random.uniform(-strafe_amt, strafe_amt)
             above_strafe = random.uniform(-strafe_amt, strafe_amt)
-            transform = carlautil.strafe_transform(transform,
+            _transform = carlautil.strafe_transform(_transform,
                     right=right_strafe, above=above_strafe)
 
-        spectator.set_transform(transform)
+        spectator.set_transform(_transform)
 
     def run_scene(self, scene_idx, spawn_point):
         """Sample frames from a scene where the car is placed on some spawn point.
@@ -344,7 +397,7 @@ class DataGenerator(object):
                 )
 
                 if self.debug:
-                    self.__set_random_frame(spectator, viewing_center.location)
+                    self.__set_random_frame(spectator, viewing_center)
 
                 ped_blueprints = self.get_pedestrian_blueprints()
                 extent = vehicle.bounding_box.extent
@@ -416,29 +469,22 @@ class DataGenerator(object):
                 self.demo_all_lights(spectator, vehicle)
             else:
                 self.world.tick()
-                location = viewing_center.location
                 self.__set_random_weather()
                 # wait for car jiggle to stop
                 for _ in range(20): self.world.tick()
-                self.__set_random_frame(spectator, location,
+                self.__set_random_frame(spectator, viewing_center,
                         xy_shift_camera=not self.add_pedestrian)
                 self.world.tick()
                 camera, save_snapshot, scene_id = self.attach_camera_to_spectator(scene_idx)
                 camera.listen(save_snapshot)
                 self.world.tick()
                 for jdx in range(self.n_frames):
-                    self.__set_random_frame(spectator, location,
+                    self.__set_random_frame(spectator, viewing_center,
                             xy_shift_camera=not self.add_pedestrian)
                     self.world.tick()
                 camera.stop()
                 self.world.tick()
 
-                # TODO: tabulate collection
-                # self.dataset_specs.scenes[scene_id] = {
-                #     "viewing_center": {
-                #         "loc": viewing_center
-                #     }
-                # }
         finally:
             if vehicle:
                 vehicle.destroy()
@@ -505,3 +551,6 @@ class DataGenerator(object):
                 break
             else:
                 self.run_synchronously(lambda : self.run_scenes(n_scenes_per_map))
+        os.makedirs(self.out_path, exist_ok=True)
+        with open(os.path.join(self.out_path, "config.json"), 'w') as f:
+            json.dump(self.dataset_specs, f)

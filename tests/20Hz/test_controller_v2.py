@@ -12,6 +12,9 @@ import carlautil
 
 from collect.in_simulation.lowlevel.v2 import VehiclePIDController
 
+"""Test vehicle PID controller v2.
+"""
+
 class ScenarioParameters(object):
     """Scenario parameters.
 

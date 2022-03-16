@@ -562,6 +562,95 @@ def visualize_vehicles_in_the_dark():
             if vehicle:
                 vehicle.destroy()
 
+def inspect_entity_dimensions():
+    config = parse_arguments()
+    client = carla.Client(config.host, config.port)
+    client.set_timeout(5.0)
+    world = client.get_world()
+    carla_map = world.get_map()
+    spawn_point = carla_map.get_spawn_points()[0]
+    # vehicle blueprints
+    blueprints = world.get_blueprint_library().filter("vehicle.*")
+    blueprints = [x for x in blueprints if int(x.get_attribute("number_of_wheels")) == 4]
+    blueprints = [x for x in blueprints if not x.id.endswith('isetta')]
+    blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
+    blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
+    blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
+    blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
+    blueprints = [x for x in blueprints if not x.id.endswith('sprinter')]
+    blueprints = [x for x in blueprints if not x.id.endswith('t2')]
+    # walker blueprints
+    walker_blueprints = world.get_blueprint_library().filter("walker.*")
+    vehicle = None
+    pedestrian = None
+    spectator = world.get_spectator()
+    logging = util.AttrDict(
+        vehicle=util.AttrDict(
+            xs=[],
+            d2s=[],
+            d3s=[]
+        ),
+        pedestrian=util.AttrDict(
+            xs=[],
+            d2s=[],
+            d3s=[]
+        )
+    )
+    for blueprint in blueprints:
+        try:
+            vehicle = world.spawn_actor(blueprint, spawn_point)
+            world.wait_for_tick()
+            transform = carlautil.spherical_to_camera_watcher_transform(
+                    5, math.pi, math.pi*(1/6),
+                    pin=spawn_point.location)
+            spectator.set_transform(transform)
+            world.wait_for_tick()
+            x = carlautil.actor_to_bbox_ndarray(vehicle)
+            d2 = np.linalg.norm(x[:2] / 2)
+            d3 = np.linalg.norm(x / 2)
+            logging.vehicle.xs.append(x)
+            logging.vehicle.d2s.append(d2)
+            logging.vehicle.d3s.append(d3)
+            print(blueprint.id)
+            print(x)
+            time.sleep(0.1)
+        finally:
+            if vehicle:
+                vehicle.destroy()
+            vehicle = None
+    world.wait_for_tick()
+    for blueprint in walker_blueprints:
+        try:
+            pedestrian = world.spawn_actor(blueprint, spawn_point)
+            world.wait_for_tick()
+            transform = carlautil.spherical_to_camera_watcher_transform(
+                    5, math.pi, math.pi*(1/6),
+                    pin=spawn_point.location)
+            spectator.set_transform(transform)
+            world.wait_for_tick()
+            x = carlautil.actor_to_bbox_ndarray(pedestrian)
+            d2 = np.linalg.norm(x[:2] / 2)
+            d3 = np.linalg.norm(x / 2)
+            logging.pedestrian.xs.append(x)
+            logging.pedestrian.d2s.append(d2)
+            logging.pedestrian.d3s.append(d3)
+        finally:
+            if pedestrian:
+                pedestrian.destroy()
+            pedestrian = None
+
+    for k, entity in logging.items():
+        entity.xs = np.stack(entity.xs)
+        entity.d2s = np.stack(entity.d2s)
+        entity.d3s = np.stack(entity.d3s)
+    print(f"Vehicle dimensions { np.max(logging.vehicle.xs, 0) }")
+    print(f"    max 2D distance from origin { np.max(logging.vehicle.d2s) }")
+    print(f"    max 3D distance from origin { np.max(logging.vehicle.d3s) }")
+
+    print(f"Pedestrian dimensions { np.mean(logging.pedestrian.xs, 0) }")
+    print(f"    max 2D distance from origin { np.max(logging.pedestrian.d2s) }")
+    print(f"    max 3D distance from origin { np.max(logging.pedestrian.d3s) }")
+
 
 def visualize_distances():
     config = parse_arguments()
@@ -586,7 +675,7 @@ def visualize_distances():
         vehicle = world.spawn_actor(blueprint, spawn_point)
         transform = carlautil.spherical_to_camera_watcher_transform(
                 3, math.pi, math.pi*(1/6),
-                location=spawn_point.location)
+                pin=spawn_point.location)
         world.get_spectator().set_transform(transform)
 
         thickness = 0.2
@@ -630,5 +719,6 @@ if __name__ == "__main__":
     # inspect_vehicle()
     # visualize_vehicles_in_the_dark()
     # jump_to_transform()
+    inspect_entity_dimensions()
     # visualize_distances()
-    main()
+    # main()
