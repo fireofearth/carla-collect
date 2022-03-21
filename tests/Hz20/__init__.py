@@ -106,16 +106,11 @@ class PlannerScenario(object):
                 map_reader,
                 other_vehicle_ids,
                 self.eval_stg,
-                plot_boundary=DEBUG_SETTINGS.plot_boundary,
-                log_agent=DEBUG_SETTINGS.log_agent,
-                log_cplex=DEBUG_SETTINGS.log_cplex,
-                plot_scenario=DEBUG_SETTINGS.plot_scenario,
-                plot_simulation=DEBUG_SETTINGS.plot_simulation,
-                plot_overapprox=DEBUG_SETTINGS.plot_overapprox,
                 scene_builder_cls=self.scene_builder_cls,
                 scene_config=online_config,
                 **self.scenario_params,
-                **self.ctrl_params
+                **self.ctrl_params,
+                **DEBUG_SETTINGS
             )
             agent.start_sensor()
             assert agent.sensor_is_listening
