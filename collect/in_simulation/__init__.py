@@ -49,8 +49,33 @@ def load_model(model_dir, env, ts=3999, device='cpu'):
     stg.set_annealing_params()
     return stg, hyperparams
 
+def get_approx_union(theta, vertices):
+    """Gets A_t, b_0 for the contraint set A_t x >= b_0
+    vertices : np.array
+        Vertices of shape (?, 8)
+    
+    Returns
+    =======
+    np.array
+        A_t matrix of shape (4, 2)
+    np.array
+        b_0 vector of shape (4,)
+    """
+    At = np.array([
+            [ np.cos(theta), np.sin(theta)],
+            [-np.sin(theta), np.cos(theta)]])
+    At = np.concatenate((np.eye(2), -np.eye(2),)) @ At
+
+    a0 = np.max(At @ vertices[:, 0:2].T, axis=1)
+    a1 = np.max(At @ vertices[:, 2:4].T, axis=1)
+    a2 = np.max(At @ vertices[:, 4:6].T, axis=1)
+    a3 = np.max(At @ vertices[:, 6:8].T, axis=1)
+    b0 = np.max(np.stack((a0, a1, a2, a3)), axis=0)
+    return At, b0
+
 class OnlineManager(object):
     """
+    TODO: unused
     TODO: some values are hardcoded.
     """
     

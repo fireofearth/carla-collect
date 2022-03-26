@@ -36,17 +36,25 @@ MODEL_SPEC_4 = util.AttrDict(
 
 class ScenarioParameters(util.AttrDict):
     """Parameters for scenario running.
-
     Attributes
     ==========
     ego_spawn_idx : int
         Index of spawn point to place EV.
+    other_spawn_ids : list of int
+        Indices of spawn point to place OVs.
+        The index of the i-th place designates where to spawn the i-th OV.
+    other_routes : list of (list of str)
+        The custom route for each OV using route commands. Applicable for
+        CARLA versions 0.9.13 and above.
+        The list at the i-th place designates the route of the i-th OV.
+        Route commands are the strings: Void, Left, Right, Straight
+        LaneFollow, ChangeLaneLeft, ChangeLaneRight, RoadEnd
     spawn_shifts : number or none
-        spawn shifts for the vehicles i=1,2,... in
+        spawn shifts for the vehicles j=1,2,... in
         `[ego_spawn_idx] + other_spawn_ids`.
-        Value of `spawn_shifts[i]` is the distance
-        from original spawn point to place vehicle i.
-        Let `spawn_shifts[i] = None` to disable shifting.
+        Value of `spawn_shifts[j]` is the distance
+        from original spawn point to place vehicle j.
+        Let `spawn_shifts[j] = None` to disable shifting.
     n_burn_interval : int
         Number of timesteps before starting motion planning.
     run_interval : int
@@ -69,6 +77,7 @@ class ScenarioParameters(util.AttrDict):
     def __init__(self,
             ego_spawn_idx=None,
             other_spawn_ids=[],
+            other_routes=[],
             spawn_shifts=[],
             n_burn_interval=None,
             run_interval=None,
@@ -83,6 +92,7 @@ class ScenarioParameters(util.AttrDict):
         super().__init__(
             ego_spawn_idx=ego_spawn_idx,
             other_spawn_ids=other_spawn_ids,
+            other_routes=other_routes,
             spawn_shifts=spawn_shifts,
             n_burn_interval=n_burn_interval,
             run_interval=run_interval,

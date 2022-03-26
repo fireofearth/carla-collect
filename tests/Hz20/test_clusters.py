@@ -1,7 +1,12 @@
 import time
 
-import numpy as np
+import carla
+import utility as util
 
+import time
+import logging
+import numpy as np
+import pytest
 import carla
 import utility as util
 import carlautil
@@ -17,52 +22,70 @@ from tests import (
     LoopEnum,
     ScenarioParameters,
     CtrlParameters,
-    attach_camera_to_spectator,
     shift_spawn_point
 )
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate import NaiveMapQuerier
-from collect.in_simulation.midlevel.v7 import MidlevelAgent
 from collect.generate.scene import OnlineConfig
+from collect.in_simulation.capture.v1 import CapturingAgent
 from collect.generate.scene.v3_2.trajectron_scene import (
     TrajectronPlusPlusSceneBuilder
 )
 
-DEBUG_SETTINGS = util.AttrDict(
-    plot_boundary=False,
-    log_agent=False,
-    log_cplex=False,
-    plot_scenario=True,
-    plot_simulation=True,
-    plot_overapprox=False,
+
+SCENARIO_straight4 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=14,
+        other_spawn_ids=[14, 14, 14],
+        spawn_shifts=[-5, 11, 3, -13],
+        other_routes=[
+            ["Straight"],
+            ["Straight"],
+            ["Straight"],
+            ["Straight"]
+        ],
+        n_burn_interval=10,
+        run_interval=20,
+    ),
+    id="straight4"
 )
 
-class PlannerScenario(object):
+VARIABLES_ph8_np1000 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=8,
+        n_predictions=1000
+    ),
+    id="ph8_np1000"
+)
 
+VARIABLES_ph8_np5000 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=8,
+        n_predictions=5000
+    ),
+    id="ph8_np5000"
+)
+
+class ClusterScenario(object):
     def __init__(
         self,
         scenario_params: ScenarioParameters,
         ctrl_params: CtrlParameters,
         carla_synchronous: tuple,
         eval_env: Environment,
-        eval_stg: Trajectron,
-        motion_planner_cls: MidlevelAgent,
-        scene_builder_cls: TrajectronPlusPlusSceneBuilder
+        eval_stg: Trajectron
     ):
         self.client, self.world, self.carla_map, self.traffic_manager = carla_synchronous
         self.scenario_params = scenario_params
         self.ctrl_params = ctrl_params
         self.eval_env = eval_env
         self.eval_stg = eval_stg
-        self.motion_planner_cls = motion_planner_cls
-        self.scene_builder_cls = scene_builder_cls
-
+        self.scene_builder_cls = TrajectronPlusPlusSceneBuilder
+    
     def run(self):
         ego_vehicle = None
         agent = None
-        spectator_camera = None
         other_vehicles = []
-        record_spectator = False
 
         try:
             map_reader = NaiveMapQuerier(self.world, self.carla_map, debug=True)
@@ -88,20 +111,21 @@ class PlannerScenario(object):
                 if k == 0:
                     ego_vehicle = vehicle
                 else:
-                    vehicle.set_autopilot(True, self.traffic_manager.get_port())
-                    if self.scenario_params.ignore_signs:
-                        self.traffic_manager.ignore_signs_percentage(vehicle, 100.)
-                    if self.scenario_params.ignore_lights:
-                        self.traffic_manager.ignore_lights_percentage(vehicle, 100.)
-                    if self.scenario_params.ignore_vehicles:
-                        self.traffic_manager.ignore_vehicles_percentage(vehicle, 100.)
-                    if not self.scenario_params.auto_lane_change:
-                        self.traffic_manager.auto_lane_change(vehicle, False)
                     other_vehicles.append(vehicle)
                     other_vehicle_ids.append(vehicle.id)
-
+                vehicle.set_autopilot(True, self.traffic_manager.get_port())
+                if self.scenario_params.ignore_signs:
+                    self.traffic_manager.ignore_signs_percentage(vehicle, 100.)
+                if self.scenario_params.ignore_lights:
+                    self.traffic_manager.ignore_lights_percentage(vehicle, 100.)
+                # if self.scenario_params.ignore_vehicles:
+                #     self.traffic_manager.ignore_vehicles_percentage(vehicle, 100.)
+                if not self.scenario_params.auto_lane_change:
+                    self.traffic_manager.auto_lane_change(vehicle, False)
+            
+            # Set up data collecting vehicle.
             frame = self.world.tick()
-            agent = self.motion_planner_cls(
+            agent = CapturingAgent(
                 ego_vehicle,
                 map_reader,
                 other_vehicle_ids,
@@ -109,63 +133,68 @@ class PlannerScenario(object):
                 scene_builder_cls=self.scene_builder_cls,
                 scene_config=online_config,
                 **self.scenario_params,
-                **self.ctrl_params,
-                **DEBUG_SETTINGS,
+                **self.ctrl_params
             )
             agent.start_sensor()
             assert agent.sensor_is_listening
-            
-            """Move the spectator to the ego vehicle.
-            The positioning is a little off"""
-            state = agent.get_vehicle_state()
-            goal = agent.get_goal()
-            goal_x, goal_y = goal.x, -goal.y
-            if goal.is_relative:
-                location = carla.Location(
-                        x=state[0] + goal_x /2.,
-                        y=state[1] - goal_y /2.,
-                        z=state[2] + 50)
-            else:
-                location = carla.Location(
-                        x=(state[0] + goal_x) /2.,
-                        y=(state[1] + goal_y) /2.,
-                        z=state[2] + 50)
-            # configure the spectator
+
+            # Set up autopilot routes
+            for k, vehicle in enumerate([ego_vehicle] + other_vehicles):
+                route = None
+                try:
+                    route = self.scenario_params.other_routes[k]
+                    len(route)
+                except (TypeError, IndexError):
+                    continue
+                try:
+                    self.traffic_manager.set_route(vehicle, route)
+                except AttributeError:
+                    break
+
+            locations = carlautil.to_locations_ndarray(other_vehicles)
+            location = carlautil.ndarray_to_location(np.mean(locations, axis=0))
+            location += carla.Location(z=50)
             self.world.get_spectator().set_transform(
                 carla.Transform(
                     location, carla.Rotation(pitch=-70, yaw=-90, roll=20)
                 )
             )
-            record_spectator = False
-            if record_spectator:
-                # attach camera to spectator
-                spectator_camera = attach_camera_to_spectator(self.world, frame)
 
             n_burn_frames = self.scenario_params.n_burn_interval*online_config.record_interval
-            if self.ctrl_params.loop_type == LoopEnum.CLOSED_LOOP:
-                run_frames = self.scenario_params.run_interval*online_config.record_interval
-            else:
-                run_frames = self.ctrl_params.control_horizon*online_config.record_interval - 1
+            run_frames = self.scenario_params.run_interval*online_config.record_interval
             for idx in range(n_burn_frames + run_frames):
-                control = None
-                for ctrl in self.scenario_params.controls:
-                    if ctrl.interval[0] <= idx and idx <= ctrl.interval[1]:
-                        control = ctrl.control
-                        break
                 frame = self.world.tick()
-                agent.run_step(frame, control=control)
-    
+                agent.run_step(frame)
+        
         finally:
-            if spectator_camera:
-                spectator_camera.destroy()
             if agent:
                 agent.destroy()
             if ego_vehicle:
                 ego_vehicle.destroy()
             for other_vehicle in other_vehicles:
                 other_vehicle.destroy()
-        
-            if record_spectator == True:
-                time.sleep(5)
-            else:
-                time.sleep(1)
+            time.sleep(1)
+
+@pytest.mark.parametrize(
+    "ctrl_params",
+    [
+        VARIABLES_ph8_np1000,
+        VARIABLES_ph8_np5000
+    ]
+)
+@pytest.mark.parametrize(
+    "scenario_params",
+    [
+        SCENARIO_straight4
+    ]
+)
+def test_Town03_scenario(
+    scenario_params, ctrl_params, carla_Town03_synchronous, eval_env, eval_stg_cuda
+):
+    ClusterScenario(
+        scenario_params,
+        ctrl_params,
+        carla_Town03_synchronous,
+        eval_env,
+        eval_stg_cuda
+    ).run()

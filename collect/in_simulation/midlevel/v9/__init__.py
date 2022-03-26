@@ -1,5 +1,4 @@
-"""
-v9 does contingency planning and safe region
+"""v9 does contingency planning and safe region
 
     - option to do contingency planning
         + multiple coinciding control
@@ -38,7 +37,8 @@ except ModuleNotFoundError as e:
 from ..plotting import (
     get_ovehicle_color_set,
     PlotPredictiveControl,
-    PlotSimulation
+    PlotSimulation,
+    PlotPIDController
 )
 from ..util import (
     get_approx_union,
@@ -343,7 +343,7 @@ class MidlevelAgent(AbstractDataCollector):
     def __plot_simulation(self):
         if len(self.__plot_simulation_data.planned_trajectories) == 0:
             return
-        filename = f"agent{self.__ego_vehicle.id}_oa_simulation"
+        filename = f"agent{self.__ego_vehicle.id}_simulation"
         bbox = self.__params.bbox
         PlotSimulation(
             self.__scene_builder.get_scene(),
@@ -361,6 +361,11 @@ class MidlevelAgent(AbstractDataCollector):
             filename=filename,
             road_boundary_constraints=self.road_boundary_constraints
         ).plot_mcc()
+        PlotPIDController(
+            self.__plot_simulation_data.lowlevel,
+            self.__world.get_settings().fixed_delta_seconds,
+            filename=filename
+        ).plot()
 
     def destroy(self):
         """Release all the CARLA resources used by this collector."""

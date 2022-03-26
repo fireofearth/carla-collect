@@ -6,3 +6,4 @@ pygame
 docplex
 slycot
 control
+ipywidgets

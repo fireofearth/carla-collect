@@ -139,16 +139,22 @@ def obj_matmul(A, B):
     return C
 
 def get_approx_union(theta, vertices):
-    """Gets A_t, b_0 for the contraint set A_t x >= b_0
+    """Gets (A, b) for the contraint set A x >= b.
+    TODO: deprecate. Use updated compute_outerapproximation()
+
+    Parameters
+    ==========
+    theta : float
+        Mean angle of 
     vertices : np.array
-        Vertices of shape (?, 8)
+        Vertices of shape (N, 8)
     
     Returns
     =======
     np.array
-        A_t matrix of shape (4, 2)
+        A matrix of shape (4, 2)
     np.array
-        b_0 vector of shape (4,)
+        b vector of shape (4,)
     """
     At = np.array([
             [ np.cos(theta), np.sin(theta)],
@@ -159,6 +165,37 @@ def get_approx_union(theta, vertices):
     a1 = np.max(At @ vertices[:, 2:4].T, axis=1)
     a2 = np.max(At @ vertices[:, 4:6].T, axis=1)
     a3 = np.max(At @ vertices[:, 6:8].T, axis=1)
+    b0 = np.max(np.stack((a0, a1, a2, a3)), axis=0)
+    return At, b0
+
+def compute_L4_outerapproximation(theta, vertices):
+    """Gets outerapproximation (A, b) with L=4
+    sides containing bounding box vertices.
+    Outerapproximation forms the contraints A x >= b.
+
+    Parameters
+    ==========
+    theta : float
+        Mean heading of bounding boxes.
+    vertices : np.array
+        Vertices of bounding boxes with shape (N, 4, 2).
+    
+    Returns
+    =======
+    np.array
+        A matrix of shape (4, 2)
+    np.array
+        b vector of shape (4,)
+    """
+    At = np.array([
+            [ np.cos(theta), np.sin(theta)],
+            [-np.sin(theta), np.cos(theta)]])
+    At = np.concatenate((np.eye(2), -np.eye(2),)) @ At
+
+    a0 = np.max(At @ vertices[:, 0].T, axis=1)
+    a1 = np.max(At @ vertices[:, 1].T, axis=1)
+    a2 = np.max(At @ vertices[:, 2].T, axis=1)
+    a3 = np.max(At @ vertices[:, 3].T, axis=1)
     b0 = np.max(np.stack((a0, a1, a2, a3)), axis=0)
     return At, b0
 

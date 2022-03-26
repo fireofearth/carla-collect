@@ -12,6 +12,8 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as clr
 import matplotlib.cm as cm
 import matplotlib.patches as patches
+import mpl_toolkits
+import mpl_toolkits.axes_grid1
 import control
 import control.matlab
 import docplex.mp
@@ -24,6 +26,7 @@ from ...trajectron import scene_to_df
 import carla
 import utility as util
 import utility.npu
+import utility.npu as npu
 import utility.plu
 import carlautil
 import carlautil.debug
@@ -44,7 +47,7 @@ AGENT_COLORS = np.array(AGENT_COLORS).take(
     [(i * 5) % len(AGENT_COLORS) for i in range(17)], 0
 )
 NCOLORS = len(AGENT_COLORS)
-PADDING = 16
+PADDING = 20
 
 OVEHICLE_COLORS = [
     clr.LinearSegmentedColormap.from_list("ro", ["red", "orange"], N=256),
@@ -419,8 +422,8 @@ class PlotPredictiveControl(object):
         self.__set_extent(ax, t, extent=extent)
 
     def plot_oa_failure(self, filename="optim_fail"):
-        x_min, y_min = self.params.initial_state.world[:2] - 2 * PADDING
-        x_max, y_max = self.params.initial_state.world[:2] + 2 * PADDING
+        x_min, y_min = self.params.initial_state.world[:2] - PADDING
+        x_max, y_max = self.params.initial_state.world[:2] + PADDING
         extent = (x_min, x_max, y_min, y_max)
 
         """Plots for paper."""
@@ -453,8 +456,8 @@ class PlotPredictiveControl(object):
         self.__set_extent(ax, t, extent=extent)
 
     def plot_mcc_failure(self, filename="mcc_optim_fail"):
-        x_min, y_min = self.params.initial_state.world[:2] - 2 * PADDING
-        x_max, y_max = self.params.initial_state.world[:2] + 2 * PADDING
+        x_min, y_min = self.params.initial_state.world[:2] - PADDING
+        x_max, y_max = self.params.initial_state.world[:2] + PADDING
         extent = (x_min, x_max, y_min, y_max)
         for traj_idx in range(self.params.N_select):
             """Generate a single plot for each combination of overapproximations
@@ -533,8 +536,6 @@ class PlotSimulation(object):
             Partial file name to save plots.
         road_boundary_constraints : bool
             Whether to visualize boundary constrains in plots.
-
-        TODO: fix incompatibility between segments, road_segs
         """
         self.scene = scene
         self.map_data = map_data
@@ -655,9 +656,9 @@ class PlotSimulation(object):
             ax.plot(
                 *cont_xy[traj_idx].T,
                 ".",
-                color=traj_colors[traj_idx],
                 zorder=20,
                 markersize=2,
+                color=traj_colors[traj_idx],
             )
             vertices = util.npu.vertices_of_bboxes(
                 cont_xy[traj_idx], cont_psi[traj_idx], self.ego_bbox
@@ -703,13 +704,16 @@ class PlotSimulation(object):
         idx = frame_idx + 1
         n_select = cont_v.shape[0]
         ax.plot(range(1, self.frames.size + 1), actual_v, "-k.", label="actual")
-        ax.plot(range(idx, idx + coin_v.size), coin_v, "-b.", label="linear plan")
+        ax.plot(
+            range(idx, idx + coin_v.size), coin_v, "-b.", label="coin. plan"
+        )
         for traj_idx in range(n_select):
             ax.plot(
                 range(idx + self.T_coin, idx + self.T_coin + cont_v[traj_idx].size),
                 cont_v[traj_idx],
                 "-.",
                 color=traj_colors[traj_idx],
+                label=f"cont. plan {traj_idx}",
             )
         ax.set_title("$v$ speed of c.g., m/s")
         ax.set_ylabel("m/s")
@@ -731,13 +735,16 @@ class PlotSimulation(object):
         idx = frame_idx + 1
         n_select = cont_psi.shape[0]
         ax.plot(range(1, self.frames.size + 1), actual_psi, "-k.", label="actual")
-        ax.plot(range(idx, idx + coin_psi.size), coin_psi, "-b.", label="linear plan")
+        ax.plot(
+            range(idx, idx + coin_psi.size), coin_psi, "-b.", label="coin. plan"
+        )
         for traj_idx in range(n_select):
             ax.plot(
                 range(idx + self.T_coin, idx + self.T_coin + cont_psi[traj_idx].size),
                 cont_psi[traj_idx],
                 "-.",
                 color=traj_colors[traj_idx],
+                label=f"cont. plan {traj_idx}",
             )
         ax.set_title("$\psi$ longitudinal angle, radians")
         ax.set_ylabel("rad")
@@ -759,7 +766,9 @@ class PlotSimulation(object):
         """Plot a, which is acceleration control input"""
         idx = frame_idx + 1
         n_select = cont_a.shape[0]
-        ax.plot(range(idx, idx + coin_a.size), coin_a, "-b.", label="control plan")
+        ax.plot(
+            range(idx, idx + coin_a.size), coin_a, "-b.", label="coin. plan"
+        )
         for traj_idx in range(n_select):
             ax.plot(
                 range(
@@ -768,6 +777,7 @@ class PlotSimulation(object):
                 cont_a[traj_idx],
                 "-.",
                 color=traj_colors[traj_idx],
+                label=f"cont. plan {traj_idx}",
             )
         ax.set_title("$a$ acceleration input, $m/s^2$")
 
@@ -791,7 +801,7 @@ class PlotSimulation(object):
         idx = frame_idx + 1
         n_select = cont_delta.shape[0]
         ax.plot(
-            range(idx, idx + coin_delta.size), coin_delta, "-b.", label="control plan"
+            range(idx, idx + coin_delta.size), coin_delta, "-b.", label="coin. plan"
         )
         for traj_idx in range(n_select):
             ax.plot(
@@ -802,6 +812,7 @@ class PlotSimulation(object):
                 cont_delta[traj_idx],
                 "-.",
                 color=traj_colors[traj_idx],
+                label=f"cont. plan {traj_idx}",
             )
         ax.set_title("$\delta$ steering input, radians")
 
@@ -971,3 +982,365 @@ class PlotSimulation(object):
                 planned_control,
                 goal,
             )
+
+
+class PlotPIDController(object):
+
+    def __init__(self, lowlevel, fixed_delta_seconds, filename="simulation"):
+        """
+        Parameters
+        ==========
+        lowlevel : util.AttrDict
+            PID statistics.
+        fixed_delta_seconds
+            Simulator steptime given by carla.Settings.
+        filename : str
+            Label for plot.
+        """
+        self.lowlevel = lowlevel
+        self.fixed_delta_seconds = fixed_delta_seconds
+        self.filename = filename
+
+    def __plot_speed(self, ax, steptimes, m_speed, r_speed):
+        """Plot measured and reference speed."""
+        ax.plot(steptimes, m_speed, "-g.", label="measured speed")
+        ax.plot(steptimes, r_speed, "-", marker='.', color="orange", label="reference speed")
+        ax.set_title("speed")
+        ax.set_ylabel("m/s")
+
+    def __plot_speed_error(self, ax, steptimes, pe_speed, ie_speed, de_speed):
+        ax.plot(steptimes, pe_speed, "-r.", label="prop. error")
+        ax.plot(steptimes, ie_speed, "-b.", label="integral error")
+        ax.plot(steptimes, de_speed, "-g.", label="derivative error")
+        ax.set_title("speed error")
+        # ax.set_ylim([-10, 10])
+
+    def __plot_lon_control(self, ax, steptimes, c_throttle, c_brake):
+        """Plot longitudinal control."""
+        ax.plot(steptimes, c_throttle, "-b.", label="applied throttle")
+        ax.plot(steptimes, c_brake, "-r.", label="applied throttle")
+        ax.set_title("longitudinal control")
+
+    def __plot_angle(self, ax, steptimes, m_angle, r_angle):
+        """Plot measured and reference angle."""
+        ax.plot(steptimes, m_angle, "-g.", label="measured angle")
+        ax.plot(steptimes, r_angle, "-", marker='.', color="orange", label="reference angle")
+        ax.set_title("angle")
+        ax.set_ylabel("rad")
+    
+    def __plot_angle_error(self, ax, steptimes, pe_angle, ie_angle, de_angle):
+        ax.plot(steptimes, pe_angle, "-r.", label="prop. error")
+        ax.plot(steptimes, ie_angle, "-b.", label="integral error")
+        ax.plot(steptimes, de_angle, "-g.", label="derivative error")
+        ax.set_title("angle error")
+        # ax.set_ylim([-10, 10])
+
+    def __plot_lat_control(self, ax, steptimes, c_steer):
+        ax.plot(steptimes, c_steer, "-b.", label="applied steer")
+        ax.set_title("lateral control")
+
+    def plot(self):
+        """Plot PID controller / actuation."""
+
+        # extract the values.
+        _, lowlevel = util.unzip([i for i in self.lowlevel.items()])
+        m_speed = util.map_to_ndarray(lambda x: x.measurement.speed, lowlevel)
+        r_speed = util.map_to_ndarray(lambda x: x.reference.speed, lowlevel)
+        m_angle = util.map_to_ndarray(lambda x: x.measurement.angle, lowlevel)
+        r_angle = util.map_to_ndarray(lambda x: x.reference.angle, lowlevel)
+        m_angle = util.npu.warp_radians_neg_pi_to_pi(m_angle)
+        r_angle = util.npu.warp_radians_neg_pi_to_pi(r_angle)
+        c_throttle = util.map_to_ndarray(lambda x: x.control.throttle, lowlevel)
+        c_brake = util.map_to_ndarray(lambda x: x.control.brake, lowlevel)
+        c_steer = util.map_to_ndarray(lambda x: x.control.steer, lowlevel)
+        pe_speed = util.map_to_ndarray(lambda x: x.error.speed.pe, lowlevel)
+        ie_speed = util.map_to_ndarray(lambda x: x.error.speed.ie, lowlevel)
+        de_speed = util.map_to_ndarray(lambda x: x.error.speed.de, lowlevel)
+        pe_angle = util.map_to_ndarray(lambda x: x.error.angle.pe, lowlevel)
+        ie_angle = util.map_to_ndarray(lambda x: x.error.angle.ie, lowlevel)
+        de_angle = util.map_to_ndarray(lambda x: x.error.angle.de, lowlevel)
+
+        # generate plot.
+        fig, axes = plt.subplots(3, 2, figsize=(20, 20))
+        axes = axes.T.ravel()
+        steptimes = np.arange(len(lowlevel)) * self.fixed_delta_seconds
+        self.__plot_speed(axes[0], steptimes, m_speed, r_speed)
+        self.__plot_speed_error(axes[1], steptimes, pe_speed, ie_speed, de_speed)
+        self.__plot_lon_control(axes[2], steptimes, c_throttle, c_brake)
+        self.__plot_angle(axes[3], steptimes, m_angle, r_angle)
+        self.__plot_angle_error(axes[4], steptimes, pe_angle, ie_angle, de_angle)
+        self.__plot_lat_control(axes[5], steptimes, c_steer)
+        for ax in axes:
+            ax.grid()
+            ax.legend()
+            ax.set_xlabel("seconds s")
+        fig.tight_layout()
+        fig.savefig(os.path.join('out', f"{self.filename}_pid.png"))
+        plt.close(fig)
+
+class PlotCluster(object):
+
+    def __init__(
+        self,
+        map_data,
+        states,
+        bboxes,
+        vertices,
+        OK_Ab_union,
+        T,
+        grid_shape="wide",
+        filename="clusters"
+    ):
+        """
+        map_data : util.AttrDict
+            Container of vertices for road segments and lines produced by MapQuerier.
+        states : collections.OrderedDict
+            Collected vehicle states on when data collector makes a prediction.
+        bboxes : collections.OrderedDict
+            Collected vehicle bounding boxes when data collector makes a prediction.
+        vertices : collections.OrderedDict
+            For each frame, the vertices are indexed by (T, max(K), O).
+            Vertex set has shape (N,4,2).
+        OK_Ab_union : collections.OrderedDict
+            For each frame, the A, b are indexed by (T, max(K), O).
+            A has shape (L, 2) b has shape (L,).
+        T : int
+            Prediction horizon.
+        """
+        self.map_data = map_data
+        frames, states = util.unzip([i for i in states.items()])
+        self.frames = np.array(frames)
+        self.states = np.stack(states)
+        self.bboxes = np.stack(bboxes.values())
+        self.vertices = list(vertices.values())
+        self.OK_Ab_union = list(OK_Ab_union.values())
+        self.T = T
+        self.filename = filename
+        self.grid_shape = grid_shape
+
+    def __create_plot_grid(self, N):
+        """Plots for paper."""
+        if self.grid_shape == "tall":
+            # make the plotting grid tall
+            fig, axes = plt.subplots(
+                N // 2 + (N % 2), 2, figsize=(10, (10 / 4) * N)
+            )
+        elif self.grid_shape == "wide":
+            # make the plotting grid wide
+            fig, axes = plt.subplots(
+                2, N // 2 + (N % 2), figsize=((10 / 4) * N, 10)
+            )
+        else:
+            NotImplementedError(f"Unknown grid shape {self.grid_shape}")
+        return fig, axes
+
+    def __vertices_to_extent(self, vertices):
+        x_min, y_min = np.min(vertices, axis=0) - 5
+        x_max, y_max = np.max(vertices, axis=0) + 5
+        return x_min, x_max, y_min, y_max
+
+    def __render_scene_bev(self, ax, extent):
+        render_map_crop(ax, self.map_data, extent)
+
+    def __collect_aggregate_predictions(self, n):
+        """Extract aggregate predictions t|t' over all timesteps t' < t for timestep t."""
+        vertices_acrosstime = []
+        O_acrosstime = []
+        K_acrosstime = []
+        A_union_acrosstime = []
+        b_union_acrosstime = []
+        for t in range(self.T):
+            m = n - t - 1
+            if m < 0:
+                break
+            vertices_acrosstime.append(self.vertices[m][t])
+            O_acrosstime.append(self.OK_Ab_union[m][0])
+            K_acrosstime.append(self.OK_Ab_union[m][1])
+            A_union_acrosstime.append(self.OK_Ab_union[m][2][t])
+            b_union_acrosstime.append(self.OK_Ab_union[m][3][t])
+        return (
+            vertices_acrosstime,
+            O_acrosstime,
+            K_acrosstime,
+            A_union_acrosstime,
+            b_union_acrosstime,
+        )
+
+    def __make_colors(self):
+        return util.map_to_list(lambda cmap: cmap(np.linspace(0, 1, self.T)), OVEHICLE_COLORS)
+
+    def __render_vehicle_bbox(self, ax, n, o, color):
+        state = self.states[n][o]
+        bbox  = self.bboxes[n][o]
+        position = state[:2]
+        heading  = state[2]
+        vertices = npu.vertices_from_bbox(position, heading, bbox)
+        bb = patches.Polygon(
+            vertices.reshape((-1, 2,))  # fmt: skip
+            ,
+            closed=True,
+            color=color,
+            fc=util.plu.modify_alpha(color, 0.2),
+            ls="-",
+        )
+        ax.add_patch(bb)
+
+    def plot_overapprox_per_timestep(self, n):
+        ovehicle_colors = self.__make_colors()
+        (
+            vertices_acrosstime,
+            O_acrosstime,
+            K_acrosstime,
+            A_union_acrosstime,
+            b_union_acrosstime,
+        ) = self.__collect_aggregate_predictions(n)
+        O_max = max(O_acrosstime)
+        fig, axes = self.__create_plot_grid(O_max)
+        axes = axes.ravel()
+
+        cmap = cm.hsv
+        norm = clr.Normalize(vmin=1, vmax=self.T, clip=True)
+        overapprox_colors = cmap(np.linspace(0, 1, self.T))
+        for ax, o in zip(axes, range(O_max)):
+            vertices = util.select_from_nested_list_at_levelindex(vertices_acrosstime, 2, o)
+            vertices = util.filter_to_list(lambda a: a is not None, vertices)
+            extent = self.__vertices_to_extent(
+                np.concatenate(vertices).reshape((-1, 2))
+            )
+            self.__render_scene_bev(ax, extent)
+            color = ovehicle_colors[o][0]
+            self.__render_vehicle_bbox(ax, n, o, color)
+
+            for t in range(self.T):
+                try:
+                    K_acrosstime[t][o]
+                except IndexError:
+                    continue
+                color = overapprox_colors[t]
+                for k in range(K_acrosstime[t][o]):
+                    A = A_union_acrosstime[t][k][o]
+                    b = b_union_acrosstime[t][k][o]
+                    npu.plot_h_polyhedron(ax, A, b, ec=color, lw=2, alpha=0.7)
+
+            ax.set_title(f"vehicle {o}")
+            divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.1)
+            fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax)
+        fig.tight_layout()
+        fig.savefig(os.path.join("out", f"{self.filename}_n{n}.png"))
+        plt.close(fig)
+
+    def plot_overapprox_per_vehicle(self):
+        N = len(self.frames)
+        for n in range(1, N):
+            self.plot_overapprox_per_timestep(n)
+
+    def plot_convexhull_per_timestep(self, n):
+        ovehicle_colors = self.__make_colors()
+        (
+            vertices_acrosstime,
+            O_acrosstime,
+            K_acrosstime,
+            A_union_acrosstime,
+            b_union_acrosstime,
+        ) = self.__collect_aggregate_predictions(n)
+        O_max = max(O_acrosstime)
+        fig, axes = self.__create_plot_grid(O_max)
+        axes = axes.ravel()
+
+        cmap = cm.hsv
+        norm = clr.Normalize(vmin=1, vmax=self.T, clip=True)
+        overapprox_colors = cmap(np.linspace(0, 1, self.T))
+        for ax, o in zip(axes, range(O_max)):
+            vertices = util.select_from_nested_list_at_levelindex(vertices_acrosstime, 2, o)
+            vertices = util.filter_to_list(lambda a: a is not None, vertices)
+            extent = self.__vertices_to_extent(
+                np.concatenate(vertices).reshape((-1, 2))
+            )
+            self.__render_scene_bev(ax, extent)
+
+            color = ovehicle_colors[o][0]
+            self.__render_vehicle_bbox(ax, n, o, color)
+
+            for t in range(self.T):
+                try:
+                    K_acrosstime[t][o]
+                except IndexError:
+                    continue
+                color = overapprox_colors[t]
+                for k in range(K_acrosstime[t][o]):
+                    vertices = np.reshape(vertices_acrosstime[t][k][o], (-1, 2))
+                    ch = scipy.spatial.ConvexHull(vertices, incremental=False)
+                    for simplex in ch.simplices:
+                        ax.plot(
+                            vertices[simplex, 0], vertices[simplex, 1],
+                            '-', color=color, lw=2, alpha=0.7
+                        )
+
+            ax.set_title(f"vehicle {o}")
+            divider = mpl_toolkits.axes_grid1.make_axes_locatable(ax)
+            cax = divider.append_axes("right", size="5%", pad=0.1)
+            fig.colorbar(cm.ScalarMappable(norm=norm, cmap=cmap), cax=cax)
+        fig.tight_layout()
+        fig.savefig(os.path.join("out", f"{self.filename}_n{n}.png"))
+        plt.close(fig)
+
+    def plot_convexhull_per_vehicle(self):
+        N = len(self.frames)
+        for n in range(1, N):
+            self.plot_convexhull_per_timestep(n)
+
+    def plot_timestep(self, ax, n):
+        """Plot clusters
+        
+        Example predictions on timesteps 10, 11, 12, 13, 14
+        10 : 11|10 12|10 13|10 14|10
+        11 : 12|11 13|11 14|11 15|11
+        12 : 13|12 14|12 15|12 16|12
+        13 : 14|13 15|13 16|13 17|13
+        14 : 15|14 16|14 17|14 18|14
+        """
+        ovehicle_colors = self.__make_colors()
+        (
+            vertices_acrosstime,
+            O_acrosstime,
+            K_acrosstime,
+            A_union_acrosstime,
+            b_union_acrosstime,
+        ) = self.__collect_aggregate_predictions(n)
+
+        # Render scene
+        vertices = util.flatten_nested_list(vertices_acrosstime, include=np.ndarray)
+        extent = self.__vertices_to_extent(
+            np.concatenate(vertices).reshape((-1, 2))
+        )
+        self.__render_scene_bev(ax, extent)
+
+        # Render vehicle bounding boxes of current timestep
+        O = self.OK_Ab_union[n][0]
+        for o in range(O):
+            color = ovehicle_colors[o][0]
+            self.__render_vehicle_bbox(ax, n, o, color)
+
+        # Render outer approximations
+        for t in range(self.T):
+            if t >= len(O_acrosstime):
+                break
+            for o in range(O_acrosstime[t]):
+                # for vehicle o
+                for k in range(K_acrosstime[t][o]):
+                    # for vehicle latent k of vehicle o
+                    color = ovehicle_colors[o][t]
+                    A = A_union_acrosstime[t][k][o]
+                    b = b_union_acrosstime[t][k][o]
+                    npu.plot_h_polyhedron(ax, A, b, ec=color, ls="-", alpha=1)
+
+    def plot(self):
+        N = len(self.frames)
+        fig, axes = plt.subplots(N // 2 + (N % 2), 2, figsize=(10, (10 / 4)*N))
+        axes = axes.ravel()
+        for n, ax in zip(range(1, N), axes):
+            self.plot_timestep(ax, n)
+        fig.tight_layout()
+        fig.savefig(os.path.join("out", f"{self.filename}.png"))
+        plt.close(fig)

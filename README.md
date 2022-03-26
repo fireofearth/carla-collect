@@ -19,12 +19,12 @@ In these instructions, I may tell you to 'do' something, like do `git submodule 
 
 **Step 2**. Install the Python environment and Python dependencies.
 
-**Step 2.1**. Either use [Anaconda](https://www.anaconda.com/products/individual), or [Python venv](https://docs.python.org/3.6/library/venv.html) to install a virtual environment for Python. You can find a guide to using Anaconda [here](https://docs.anaconda.com/anaconda/user-guide/getting-started/).
+**Step 2.1**. Either use [Anaconda](https://www.anaconda.com/products/individual), or [Python venv](https://docs.python.org/3.6/library/venv.html) to install a virtual environment for Python 3.7 or 3.8. You can find a guide to using Anaconda [here](https://docs.anaconda.com/anaconda/user-guide/getting-started/).
 
 If you choose to install Anaconda, then after do:
 
 ```
-conda create -n trajectron python=3.6
+conda create -n trajectron python=3.7
 conda activate trajectron
 ```
 
@@ -40,7 +40,9 @@ pip install -r Trajectron-plus-plus/requirements.txt
 pip install -r requirements.txt
 ```
 
-**Step 3**. Install [CARLA Simulator](http://carla.org/). I personally prefer using the **B. Package installation** method from this [guide](https://carla.readthedocs.io/en/0.9.11/start_quickstart/#installation-summary) to install CARLA binaries to my local directory.
+**Step 3**. Install the server [CARLA Simulator](http://carla.org/). I personally prefer using the **B. Package installation** method from this [guide](https://carla.readthedocs.io/en/0.9.11/start_quickstart/#installation-summary) to install CARLA binaries to my local directory.
+
+**Step 3.1**. Optionally install the CARLA client as Python wheel from PyPI using `pip`. If the installation fails you may want to `pip install --upgrade pip`.
 
 **Step 4**. Edit the `carla-collect/env.sh` as needed. You'll specifically want to "Set CARLA Simulatory directory manually" by setting `CARLA_DIR` and "Enable the Python environment".
 
