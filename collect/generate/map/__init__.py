@@ -214,7 +214,7 @@ class MapQuerier(ABC):
 
     @property
     def map_name(self):
-        return self.carla_map.name
+        return self.carla_map.name.split('/')[-1]
 
     def debug_display(self):
         pass
