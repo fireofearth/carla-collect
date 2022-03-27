@@ -7,3 +7,5 @@ docplex
 slycot
 control
 ipywidgets
+networkx
+# carla==0.9.13

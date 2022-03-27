@@ -152,6 +152,17 @@ def plot_trajectron_scene(savedir, scene):
     fig.savefig(fp)
 
 def make_environment(name):
+    """Create an environment.
+
+    Parameters
+    ==========
+    name : str
+        Name of environment.
+
+    Returns
+    =======
+    trajectron.environment.Environment
+    """
     env = Environment(node_type_list=['VEHICLE'],
                 name=name,
                 standardization=standardization)

@@ -2,6 +2,54 @@
 
 TBD
 
+## Python pre-installation
+
+### Python versioning
+
+The instructions assume you are running Ubuntu Linux.
+If the Ubuntu distribution does not provide the python version by default,
+then you must install the deadsnakes PPA. Installation for alternative Python versions are similar.
+For Python 3.8 do:
+
+```
+# setup python
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt-get update
+sudo apt install python3.8 python3.8-dev python3.8-venv
+```
+
+### Python environment and libraries
+
+To install the Python 3.8 virtual environment, do the following:
+
+```
+# setup python environment
+python3.8 -m venv py38trajectron
+pip install --upgrade pip
+pip install wheel
+```
+
+Installation for alternative Python versions are similar.
+
+### Technical aspects of versioning
+
+Techical goals:
+
+- Ideally, both `carla-collect` and Trajectron++ should be upgraded to Python 3.8 and Torch 1.11 and the latest libraries.
+- Datasets for Trajectron++ should not be persisted Python objects (e.g. use `dill`). Instead use HDF5 or similar storage.
+- Ideally, use CARLA 0.9.13, but it requies 8 GB GPU memory. CARLA 0.9.11 works as an alternative, but it's not possible to fix autopilot car routes using this version.
+
+Observations:
+
+- CARLA 0.9.11 provides a client egg library for Python 3.7, but it seems to work with Python 3.8.
+- CARLA 0.9.13 provides a client wheel installable from PyPI for Python 3.6-8.
+- `scipy==1.3.1` : requires blas unlike later versions, according to [source](https://github.com/scipy/scipy/issues/9005) you need to do `sudo apt-get install gfortran libopenblas-dev liblapack-dev` first.
+- Trajectron++ is currently trained using Python 3.6 Torch 1.4, but it works with Python 3.8. Model seems trainable with Torch 1.7.1 and trained models seem runnable using Torch 1.11.
+- Pickled objects using `dill` seem to be unpicklable in environments with a different version of `numpy`, etc and `dill`.
+- Installed PyTorch binaries should come with CUDA, cuDNN.
+- NVIDIA GeFroce RTX 3050 seems to cause runtime error when using CUDA 10.1 e.g. `torch==1.4.0`, `torch` with CUDA 11 binaries seems to work e.g. Torch 1.7.1 and 1.11.
+- ComputeCanada offer Python wheels for most packages but not all packages. Install higher version provided wheels if available, and download packages from the internet for non-offered packages.
+
 ## Bare-bones Installation Steps
 
 These steps are the necessary and sufficient steps to download all the dependencies, and load a trained model in the Jupyter notebook.

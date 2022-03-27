@@ -1,8 +1,10 @@
 carla_v*_dataset/
+carla_dataset_v*/
 out/
 plots/
 __pycache__/
 cache/
 .ipynb_checkpoints/
 .pytest_cache/
-py37trajectron/
+py*trajectron/
+rawCarla-*/

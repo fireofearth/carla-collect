@@ -2,7 +2,6 @@
 
 I only need to connect to the CARLA server once to extract map data if my cache is empty.
 """
-
 import pprint
 import os
 import logging
