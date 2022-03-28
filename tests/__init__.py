@@ -146,7 +146,6 @@ def shift_spawn_point(carla_map, k, spawn_shifts, spawn_point):
         return spawn_point
     return carlautil.move_along_road(carla_map, spawn_point, spawn_shift)
 
-
 def attach_camera_to_spectator(world, frame, sensor_tick="0.2"):
     os.makedirs(f"out/starting{frame}", exist_ok=True)
     blueprint = world.get_blueprint_library().find('sensor.camera.rgb')
@@ -163,5 +162,3 @@ def attach_camera_to_spectator(world, frame, sensor_tick="0.2"):
         )
     sensor.listen(take_picture)
     return sensor
-
-

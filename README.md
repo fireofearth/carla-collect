@@ -117,6 +117,12 @@ You may have to modify code here and there to get some of them to work. The note
 
 ## Running CARLA and Synthesizing CARLA Dataset
 
+Collect data via
+
+```
+source collect_Mix.sh 2>&1 | tee out/log.txt
+```
+
 TBD
 
 ## Training/Evaluating Trajectron++ Model
