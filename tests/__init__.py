@@ -33,6 +33,15 @@ MODEL_SPEC_4 = util.AttrDict(
         desc="Base +MapV4 model with heading fix, PH=8, K=15 "
              "(trained on carla v3-1-2 dataset)")
 
+MODEL_SPEC_5 = util.AttrDict(
+    path="experiments/nuScenes/models/20220326/models_26_Mar_2022_23_31_28_carla_v4-1_base_distmapV4_modfm_K15_ph8",
+    desc="Base +MapV4-1 model with heading fix, rebalancing, PH=8, K=5 (trained on CARLA 0.9.13 all maps)"
+)
+
+MODEL_SPEC_6 = util.AttrDict(
+    path="experiments/nuScenes/models/20220326/models_27_Mar_2022_04_52_55_carla_v4-2-1_base_distmapV4_modfm_K15_ph8",
+    desc="Base +MapV4-1 model with heading fix, rebalancing, PH=8, K=5 (trained on CARLA 0.9.13 Town03)"
+)
 
 class ScenarioParameters(util.AttrDict):
     """Parameters for scenario running.

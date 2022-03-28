@@ -12,7 +12,7 @@ except ModuleNotFoundError as e:
     raise Exception("You forgot to link trajectron-plus-plus/trajectron")
 
 from collect.in_simulation import load_model
-from collect.generate.scene.v2_1.trajectron_scene import standardization
+from collect.generate.scene.v3_2.trajectron_scene import standardization
 from . import MODEL_SPEC_4, CARLA_HOST, CARLA_PORT, SEED
 
 model_spec = MODEL_SPEC_4
