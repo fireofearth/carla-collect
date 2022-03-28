@@ -114,6 +114,16 @@ class PlannerScenario(object):
             )
             agent.start_sensor()
             assert agent.sensor_is_listening
+
+            """Setup vehicle routes"""
+            for k, vehicle in enumerate(other_vehicles):
+                route = None
+                try:
+                    route = self.scenario_params.other_routes[k]
+                    len(route)
+                except (TypeError, IndexError) as e:
+                    continue
+                self.traffic_manager.set_route(vehicle, route)
             
             """Move the spectator to the ego vehicle.
             The positioning is a little off"""

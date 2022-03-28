@@ -10,6 +10,14 @@ from tests import (
 ##################
 # Town03 scenarios
 
+STRAIGHT_ROUTES = [
+    ["Straight", "Straight", "Straight"],
+    ["Straight", "Straight", "Straight"],
+    ["Straight", "Straight", "Straight"],
+    ["Straight", "Straight", "Straight"],
+    ["Straight", "Straight", "Straight"],
+]
+
 CONTROLS_scene3 = [
     util.AttrDict(
         interval=(0, 9*10,),
@@ -24,6 +32,7 @@ SCENARIO_scene3_ov1_shift25 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
         spawn_shifts=[-5, 25],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=10,
         run_interval=8,
         controls=CONTROLS_scene3,
@@ -40,6 +49,7 @@ SCENARIO_scene3_ov1_shift20 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
         spawn_shifts=[-5, 20],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=10,
         run_interval=8,
         controls=CONTROLS_scene3,
@@ -56,6 +66,7 @@ SCENARIO_scene3_ov1_shift15 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
         spawn_shifts=[-5, 15],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=10,
         run_interval=8,
         controls=CONTROLS_scene3,
@@ -72,6 +83,7 @@ SCENARIO_scene3_ov1_shift10 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14],
         spawn_shifts=[-5, 10],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=14,
         run_interval=10,
         controls=CONTROLS_scene3,
@@ -93,6 +105,7 @@ SCENARIO_scene3_ov4_gap28 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14, 14, 15, 15],
         spawn_shifts=[-5, 31, 23, -5, -13],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=10,
         run_interval=22,
         controls=CONTROLS_scene3,
@@ -109,6 +122,7 @@ SCENARIO_scene3_ov4_gap34 = pytest.param(
         ego_spawn_idx=85,
         other_spawn_ids=[14, 14, 15, 15],
         spawn_shifts=[-5, 31, 23, -11, -19],
+        other_routes=STRAIGHT_ROUTES,
         n_burn_interval=10,
         run_interval=22,
         controls=CONTROLS_scene3,

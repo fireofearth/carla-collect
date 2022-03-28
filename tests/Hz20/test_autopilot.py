@@ -127,6 +127,7 @@ class AutopilotScenario(object):
                 other_vehicle_ids.append(vehicle.id)
 
             frame = self.world.tick()
+            """Setup vehicle routes"""
             for k, vehicle in enumerate(other_vehicles):
                 route = None
                 try:
@@ -136,6 +137,7 @@ class AutopilotScenario(object):
                     continue
                 self.traffic_manager.set_route(vehicle, route)
 
+            """Move spectator to view all cars."""
             locations = carlautil.to_locations_ndarray(other_vehicles)
             location = carlautil.ndarray_to_location(np.mean(locations, axis=0))
             location += carla.Location(z=50)
