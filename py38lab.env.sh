@@ -4,7 +4,7 @@
 export APPROOT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Set CARLA Simulatory directory manually
-CARLANAME=carla-0.9.13
+export CARLANAME=carla-0.9.13
 export CARLA_DIR=/home/$(whoami)/colinc/$CARLANAME
 # CPLEX is optional: it is only used for in-simulation code
 export CPLEX_STUDIO_DIR1210=/opt/ibm/ILOG/CPLEX_Studio1210
