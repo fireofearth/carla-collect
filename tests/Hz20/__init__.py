@@ -93,8 +93,8 @@ class PlannerScenario(object):
                         self.traffic_manager.ignore_signs_percentage(vehicle, 100.)
                     if self.scenario_params.ignore_lights:
                         self.traffic_manager.ignore_lights_percentage(vehicle, 100.)
-                    if self.scenario_params.ignore_vehicles:
-                        self.traffic_manager.ignore_vehicles_percentage(vehicle, 100.)
+                    # if self.scenario_params.ignore_vehicles:
+                    #     self.traffic_manager.ignore_vehicles_percentage(vehicle, 100.)
                     if not self.scenario_params.auto_lane_change:
                         self.traffic_manager.auto_lane_change(vehicle, False)
                     other_vehicles.append(vehicle)

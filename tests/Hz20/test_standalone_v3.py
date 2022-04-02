@@ -197,7 +197,6 @@ CONTROLS_intersection_4_1 = [
         control=carla.VehicleControl(throttle=0.3, steer=-0.2)
     ),
 ]
-
 SCENARIO_intersection_4_1 = pytest.param(
     # left turn of low curvature to angled road
     # begin motion planning while turning
@@ -233,7 +232,7 @@ SCENARIO_intersection_3 = pytest.param(
     ScenarioParameters(
             ego_spawn_idx=85,
             n_burn_interval=12,
-            run_interval=13,
+            run_interval=30,
             controls=CONTROLS_intersection_3,
             turn_choices=[1],
             max_distance=70),
@@ -244,7 +243,7 @@ SCENARIO_intersection_4 = pytest.param(
     ScenarioParameters(
             ego_spawn_idx=85,
             n_burn_interval=12,
-            run_interval=15,
+            run_interval=30,
             controls=CONTROLS_intersection_3,
             turn_choices=[2],
             max_distance=70),
@@ -255,7 +254,7 @@ SCENARIO_intersection_5 = pytest.param(
     ScenarioParameters(
             ego_spawn_idx=85,
             n_burn_interval=12,
-            run_interval=24,
+            run_interval=30,
             controls=CONTROLS_intersection_3,
             turn_choices=[3],
             max_distance=70),
@@ -279,6 +278,45 @@ SCENARIO_roundabout_1 = pytest.param(
             max_distance=200),
     id="roundabout_1"
 )
+
+CONTROLS_scene4 = [
+    util.AttrDict(
+        interval=(0, 12*10,),
+        control=carla.VehicleControl(throttle=0.3)
+    ),
+]
+SCENARIO_scene4 = pytest.param(
+    # Small T-intersection and road bend
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        n_burn_interval=12,
+        run_interval=50,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4"
+)
+
+CONTROLS_scene4 = [
+    util.AttrDict(
+        interval=(0, 12*10,),
+        control=carla.VehicleControl(throttle=0.3)
+    ),
+]
+SCENARIO_scene5 = pytest.param(
+    # Cul de sac
+    ScenarioParameters(
+        ego_spawn_idx=88,
+        n_burn_interval=12,
+        run_interval=40,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene5"
+)
+
 
 VARIABLES_ch8_step1 = pytest.param(
     MotionPlanner, CtrlParameters(
@@ -340,7 +378,9 @@ VARIABLES_ch6_open = pytest.param(
         SCENARIO_intersection_4,
         SCENARIO_intersection_5,
         SCENARIO_intersection_4_1,
-        SCENARIO_roundabout_1
+        SCENARIO_roundabout_1,
+        SCENARIO_scene4,
+        SCENARIO_scene5
     ]
 )
 def test_Town03_scenario(scenario_params, agent_constructor, ctrl_params,

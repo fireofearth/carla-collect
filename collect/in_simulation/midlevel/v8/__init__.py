@@ -42,7 +42,7 @@ from ..util import get_approx_union, get_vertices_from_centers
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...dynamics.bicycle_v2 import VehicleModel
-from ...lowlevel.v3 import VehiclePIDController
+from ...lowlevel.v4 import VehiclePIDController
 from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint
 from ....generate.map import MapQuerier
@@ -76,13 +76,19 @@ class MidlevelAgent(AbstractDataCollector):
         # Slack variable for solver
         params.M_big = 10_000
         # Control variable for solver, setting max/min acceleration/speed
-        params.max_a = 1
+        params.max_a = 3.5
         params.min_a = -7
-        params.max_v = 5
+        params.max_v = 10
         # objective : util.AttrDict
         #   Parameters in objective function.
         params.objective = util.AttrDict(
-            w_final=1.0, w_ch_accel=0.0, w_ch_turning=0.5, w_accel=0.0, w_turning=0.0
+            w_final=3.0,
+            w_ch_accel=0.5,
+            w_ch_turning=2.0,
+            w_ch_joint=0.1,
+            w_accel=0.5,
+            w_turning=1.0,
+            w_joint=0.2
         )
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -518,8 +524,8 @@ class MidlevelAgent(AbstractDataCollector):
             Global (x, y) coordinates for car's destination at for the MPC step.
         """
         position = params.initial_state.world[:2]
-        v_lim = self.__ego_vehicle.get_speed_limit()
-        distance = 0.75 * v_lim * self.__steptime * self.__control_horizon
+        v_lim = min(self.__ego_vehicle.get_speed_limit() * 0.28, self.__params.max_v)
+        distance = v_lim * self.__steptime * self.__control_horizon
         segments = self.__road_boundary.collect_segs_polytopes_and_goal(
             position, distance
         )
@@ -729,10 +735,16 @@ class MidlevelAgent(AbstractDataCollector):
         for u1, u2 in util.pairwise(U[:, 1]):
             _u = u1 - u2
             cost += obj.w_ch_turning * _u * _u
+        # change in joint objective
+        for u1, u2 in util.pairwise(U[:]):
+            _u = u1 - u2
+            cost += obj.w_ch_joint * _u[0] * _u[1]
         # acceleration objective
         cost += obj.w_accel * np.sum(U[:, 0] ** 2)
         # turning objective
         cost += obj.w_turning * np.sum(U[:, 1] ** 2)
+        # joint objective
+        cost += 2. * obj.w_joint * np.sum(U[:, 0] * U[:, 1])
         return cost
 
     def do_highlevel_control(self, params, ovehicles):

@@ -1,6 +1,7 @@
 import pytest
 import carla
 import utility as util
+import carlautil
 from tests import (
     LoopEnum,
     ScenarioParameters,
@@ -21,7 +22,7 @@ STRAIGHT_ROUTES = [
 CONTROLS_scene3 = [
     util.AttrDict(
         interval=(0, 9*10,),
-        control=carla.VehicleControl(throttle=0.4)
+        control=carlautil.create_gear_control(throttle=0.4)
     ),
 ]
 

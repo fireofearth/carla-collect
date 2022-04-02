@@ -11,7 +11,7 @@ import utility as util
 import carla
 import carlautil
 
-from collect.in_simulation.lowlevel.v3 import VehiclePIDController
+from collect.in_simulation.lowlevel.v4 import VehiclePIDController
 
 """
 pytest tests/20Hz/test_controller_v2.py::test_Town03_scenario[top555]
@@ -81,15 +81,6 @@ def scenario(scenario_params, carla_synchronous, request):
             )
         )
 
-        controller = VehiclePIDController(ego_vehicle, max_steering=1.0)
-        for idx in range(scenario_params.n_burn_steps):
-            for ctrl in scenario_params.init_controls:
-                if ctrl.interval[0] <= idx and idx <= ctrl.interval[1]:
-                    ego_vehicle.apply_control(ctrl.control)
-                    break
-            world.tick()
-            carlautil.actor_to_speed(ego_vehicle)
-
         ###############
         # Apply control
         # NOTE: 1 m/s == 3.6 km/h
@@ -108,9 +99,17 @@ def scenario(scenario_params, carla_synchronous, request):
             control_steers.append(control.steer)
             control_throttles.append(control.throttle)
             control_brakes.append(control.brake)
-        add_stats()
 
-        # logging.info(ego_vehicle.get_transform().rotation.yaw)
+        controller = VehiclePIDController(ego_vehicle)
+        for idx in range(scenario_params.n_burn_steps):
+            for ctrl in scenario_params.init_controls:
+                if ctrl.interval[0] <= idx and idx <= ctrl.interval[1]:
+                    ego_vehicle.apply_control(ctrl.control)
+                    break
+            world.tick()
+            add_stats()
+
+        logging.info(f"starting at yaw {ego_vehicle.get_transform().rotation.yaw}")
         controller.set_plan(
             scenario_params.controls.target_speeds,
             scenario_params.controls.target_angles,
@@ -127,16 +126,18 @@ def scenario(scenario_params, carla_synchronous, request):
         fig, axes = plt.subplots(2,2, figsize=(12, 12))
         axes = axes.T.ravel()
         timesteps = np.arange(len(speeds)) * 0.05
-        axes[0].plot(timesteps, controller.step_to_speed, label="target")
+        plan_timesteps = timesteps[-len(controller.step_to_speed):]
+        axes[0].plot(plan_timesteps, controller.step_to_speed, label="target")
         axes[0].plot(timesteps, speeds, label="measurement")
         axes[0].set_title("Speed response")
         axes[1].plot(timesteps, control_throttles, "b", label="throttle")
         axes[1].plot(timesteps, control_brakes, "r", label="brake")
         axes[1].set_title("Speed input")
-        axes[2].plot(timesteps, controller.step_to_angle, label="target")
+        axes[2].plot(plan_timesteps, controller.step_to_angle, label="target")
+        plan_headings = headings[-len(controller.step_to_angle):]
         _headings = util.npu.warp_radians_about_center(
-                np.array(headings), np.array(controller.step_to_angle))
-        axes[2].plot(timesteps, _headings, label="measurement")
+                np.array(plan_headings), np.array(controller.step_to_angle))
+        axes[2].plot(plan_timesteps, _headings, label="measurement")
         axes[2].set_title("Heading response")
         axes[3].plot(timesteps, control_steers, "b", label="steer")
         axes[3].set_title("Steer input")
@@ -154,7 +155,8 @@ def scenario(scenario_params, carla_synchronous, request):
         if ego_vehicle:
             ego_vehicle.destroy()
 
-"""
+"""CARLA 0.9.11 observations:
+
 Recall that timesteps are 0.05 s, so 1s has 20 steps.
 
 Out of target speeds 8.33.. m/s, 5.55.. m/s, 2.77.. m/s, the speed
@@ -165,6 +167,13 @@ the K_P = 0.74, K_D = 0.07, K_I = 0 brings vehicle closest to target
 velocity without oscillation, when no steering is involved.
 
 Control input values for PID controller are in the Unreal Engine coordinate system.
+"""
+
+"""CARLA 0.9.13 observations:
+
+Give vehicle at least 0.7 seconds in simulation time to warm up, setting `n_burn_steps=15`.
+Cars cannot instantaneously increase speed. Don't use discontinuous/steep velocity
+reference trajectories in motion planner.
 """
 
 enter_rad = math.radians(-179.705383)
@@ -180,10 +189,10 @@ SCENARIO_top833 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -206,10 +215,10 @@ SCENARIO_top555 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -232,10 +241,10 @@ SCENARIO_top277 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -243,6 +252,118 @@ SCENARIO_top277 = pytest.param(
         controls=CONTROLS_top277
     ),
     id="top277"
+)
+
+enter_rad = math.radians(-179.705383)
+CONTROLS_acc018_top555 = util.AttrDict(
+    target_speeds=[i*(5.55/30) for i in range(1, 31)]
+        + [5.55]*20,
+    target_angles=[enter_rad]*50,
+    step_period=10
+)
+SCENARIO_acc018_top555 = pytest.param(
+    # Accelerate gradually at 0.185 m/s^2 to 5.55 m/s
+    ScenarioParameters(
+        ego_spawn_idx=85,
+        spawn_shift=None,
+        n_burn_steps=15,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 14),
+                control=carlautil.create_gear_control(throttle=0.01)
+            )
+        ],
+        run_steps=500,
+        controls=CONTROLS_acc018_top555,
+    ),
+    id="acc018_top555"
+)
+
+enter_rad = math.radians(89.831024)
+CONTROLS_acc027_top555 = util.AttrDict(
+    target_speeds=[i*(5.55/20) for i in range(1, 21)]
+        + [5.55]*30,
+    target_angles=[enter_rad]*50,
+    step_period=10
+)
+SCENARIO_acc027_top555 = pytest.param(
+    # Accelerate gradually at 0.277 m/s^2 to 5.55 m/s
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        spawn_shift=None,
+        n_burn_steps=15,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 14),
+                control=carlautil.create_gear_control(throttle=0.01)
+            )
+        ],
+        run_steps=500,
+        controls=CONTROLS_acc027_top555,
+    ),
+    id="acc027_top555"
+)
+
+enter_rad = math.radians(89.831024)
+CONTROLS_top600_dec_bot300 = util.AttrDict(
+    target_speeds=[6.00]*30+ [3.00]*30,
+    target_angles=[enter_rad]*60,
+    step_period=10
+)
+SCENARIO_top600_dec_bot300 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        n_burn_steps=100,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 99),
+                control=carlautil.create_gear_control(throttle=0.7)
+            )
+        ],
+        run_steps=600,
+        controls=CONTROLS_top600_dec_bot300,
+    ),
+    id="top600_dec_bot300"
+)
+
+enter_rad = math.radians(89.831024)
+CONTROLS_top500_dec015_bot200 = util.AttrDict(
+    target_speeds=[5.00]*20 + [(5.00 - i*(5.00 - 2.00)/20) for i in range(1, 20)] + [2.00]*20,
+    target_angles=[enter_rad]*60,
+    step_period=10
+)
+SCENARIO_top500_dec015_bot200 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        n_burn_steps=100,
+        init_controls=[
+            util.AttrDict(
+                interval=(0, 99),
+                control=carlautil.create_gear_control(throttle=0.6)
+            )
+        ],
+        run_steps=600,
+        controls=CONTROLS_top500_dec015_bot200,
+    ),
+    id="top500_dec015_bot200"
+)
+
+enter_rad = math.radians(89.831024)
+CONTROLS_accelerate = util.AttrDict(
+    target_speeds=[i*(5.55/20) for i in range(1, 21)],
+    target_angles=[enter_rad]*20,
+    step_period=10
+)
+SCENARIO_accelerate = pytest.param(
+    # Accelerate gradually at 0.28 m/s^2
+    ScenarioParameters(
+        ego_spawn_idx=60,
+        spawn_shift=None,
+        n_burn_steps=100,
+        run_steps=200,
+        controls=CONTROLS_accelerate,
+    ),
+    id="accelerate"
 )
 
 enter_rad = math.radians(-179.705383)
@@ -276,10 +397,10 @@ SCENARIO_left052 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -299,11 +420,10 @@ SCENARIO_left076 = pytest.param(
     # Adust heading by 45 degrees == 0.785 radians.
     ScenarioParameters(
         ego_spawn_idx=85,
-        spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -325,10 +445,10 @@ SCENARIO_left096 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=3,
+        n_burn_steps=15,
         init_controls=[
             util.AttrDict(
-                interval=(0, 2),
+                interval=(0, 14),
                 control=carlautil.create_gear_control(throttle=0.01)
             )
         ],
@@ -393,24 +513,6 @@ SCENARIO_at555_right_turn035 = pytest.param(
 )
 
 enter_rad = math.radians(89.831024)
-CONTROLS_accelerate = util.AttrDict(
-    target_speeds=[i*(5.55/20) for i in range(1, 21)],
-    target_angles=[enter_rad]*20,
-    step_period=10
-)
-SCENARIO_accelerate = pytest.param(
-    # Accelerate gradually.
-    ScenarioParameters(
-        ego_spawn_idx=60,
-        spawn_shift=None,
-        n_burn_steps=100,
-        run_steps=200,
-        controls=CONTROLS_accelerate,
-    ),
-    id="accelerate"
-)
-
-enter_rad = math.radians(89.831024)
 CONTROLS_vary_speed1 = util.AttrDict(
     target_speeds=[5.55 - i*(5.55/10) for i in range(0, 6)] \
         + [5.55 - i*(5.55/10) for i in range(4, 0, -1)] \
@@ -443,16 +545,20 @@ CONTROLS_vary1 = util.AttrDict(
     target_angles=[enter_rad + i*0.2 for i in range(0, 20)],
     step_period=10
 )
+if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+    n_burn_steps = 170
+else:
+    n_burn_steps = 100
 SCENARIO_vary1 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=100,
+        n_burn_steps=n_burn_steps,
         run_steps=200,
         controls=CONTROLS_vary1,
         init_controls=[
             util.AttrDict(
-                interval=(0, 100),
+                interval=(0, n_burn_steps),
                 control=carlautil.create_gear_control(throttle=0.5)
             )
         ],
@@ -466,16 +572,20 @@ CONTROLS_vary2 = util.AttrDict(
     target_angles=[enter_rad + i*0.35 for i in range(0, 20)],
     step_period=10
 )
+if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+    n_burn_steps = 170
+else:
+    n_burn_steps = 100
 SCENARIO_vary2 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
-        n_burn_steps=100,
+        n_burn_steps=n_burn_steps,
         run_steps=200,
         controls=CONTROLS_vary2,
         init_controls=[
             util.AttrDict(
-                interval=(0, 100),
+                interval=(0, n_burn_steps),
                 control=carlautil.create_gear_control(throttle=0.5)
             )
         ],
@@ -489,6 +599,10 @@ SCENARIO_vary2 = pytest.param(
         SCENARIO_top833,
         SCENARIO_top555,
         SCENARIO_top277,
+        SCENARIO_acc018_top555,
+        SCENARIO_acc027_top555,
+        SCENARIO_top600_dec_bot300,
+        SCENARIO_top500_dec015_bot200,
         SCENARIO_forward,
         SCENARIO_left052,
         SCENARIO_left076,

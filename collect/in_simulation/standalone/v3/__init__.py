@@ -35,14 +35,8 @@ import docplex.mp.constants
 from ....profiling import profile
 from ....generate.scene import OnlineConfig
 from .util import plot_oa_simulation
-from ...dynamics.bicycle_v2 import (
-    get_state_matrix,
-    get_input_matrix,
-    get_output_matrix,
-    get_feedforward_matrix,
-    VehicleModel,
-)
-from ...lowlevel.v3 import VehiclePIDController
+from ...dynamics.bicycle_v2 import VehicleModel
+from ...lowlevel.v4 import VehiclePIDController
 
 # Local libraries
 import carla
@@ -59,13 +53,19 @@ class MotionPlanner(object):
         # Slack variable for solver
         params.M_big = 10_000
         # Control variable for solver, setting max/min acceleration/speed
-        params.max_a = 1
+        params.max_a = 3.5
         params.min_a = -7
-        params.max_v = 5
+        params.max_v = 10
         # objective : util.AttrDict
         #   Parameters in objective function.
         params.objective = util.AttrDict(
-            w_final=2.0, w_ch_accel=0.5, w_ch_turning=0.5, w_accel=0.5, w_turning=0.5
+            w_final=3.0,
+            w_ch_accel=0.5,
+            w_ch_turning=2.0,
+            w_ch_joint=0.1,
+            w_accel=0.5,
+            w_turning=1.0,
+            w_joint=0.2
         )
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -331,9 +331,9 @@ class MotionPlanner(object):
         """
         n_segs = len(self.__road_segs.polytopes)
         segment_length = self.__road_segs.segment_length
-        v_lim = self.__ego_vehicle.get_speed_limit()
+        v_lim = min(self.__ego_vehicle.get_speed_limit() * 0.28, self.__params.max_v)
         go_forward = int(
-            (0.75 * v_lim * self.__steptime * self.__control_horizon) // segment_length
+            (v_lim * self.__steptime * self.__control_horizon) // segment_length
             + 1
         )
         pos0 = params.initial_state.world[:2]
@@ -395,10 +395,16 @@ class MotionPlanner(object):
         for u1, u2 in util.pairwise(U[:, 1]):
             _u = u1 - u2
             cost += obj.w_ch_turning * _u * _u
+        # change in joint objective
+        for u1, u2 in util.pairwise(U[:]):
+            _u = u1 - u2
+            cost += obj.w_ch_joint * _u[0] * _u[1]
         # acceleration objective
         cost += obj.w_accel * np.sum(U[:, 0] ** 2)
         # turning objective
         cost += obj.w_turning * np.sum(U[:, 1] ** 2)
+        # joint objective
+        cost += 2. * obj.w_joint * np.sum(U[:, 0] * U[:, 1])
         return cost
 
     def do_highlevel_control(self, params):

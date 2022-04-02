@@ -41,7 +41,7 @@ class ScenarioParameters(object):
         self.controls = controls
 
 
-def scenario(scenario_params, carla_synchronous):
+def scenario(scenario_params, carla_synchronous, request):
     client, world, carla_map, traffic_manager = carla_synchronous
     ego_vehicle = None
 
@@ -115,21 +115,24 @@ def scenario(scenario_params, carla_synchronous):
         axes[2].set_title("Angular velocity response")
         axes[2].set_ylabel("deg/$s$")
         for ax in axes:
+            ax.grid()
             ax.legend()
             ax.set_xlabel("time s")
         for ax in axes[:2]:
             ax.plot(timesteps, control_throttles, "b", label="throttle input")
             ax.plot(timesteps, control_brakes, "r", label="brake input")
-        plt.show()
+        fig.tight_layout()
+        fig.savefig(os.path.join("out", f"{request.node.callspec.id}.png"))
+        fig.clf()
 
     finally:
         if ego_vehicle:
             ego_vehicle.destroy()
 
 
-"""
-Go straight at top speed
+"""Go straight at top speed
 
+CARLA 0.9.11 specs:
 - Intersection speed limit is 30 km/h == 8.33.. m/s
 - Setting throttle to 1 makes car velocity increase endlessly(?),
   when using automatic gear. This is not always true when throttle is <1.
@@ -210,6 +213,8 @@ SCENARIO_go_stop_go = pytest.param(
 Go straight, then stop, then go.
 manual_gear_shift=True and gear=1 must be set in control
 at all times or else gear will start changing. 
+
+CARLA 0.9.11:
 When fixing gear 1,
 The vehicle is able to keep up an acceleration of > 1.0 m/s^2
 until it reaches a velocity of 8 m/s.
@@ -250,10 +255,11 @@ SCENARIO_gear_1_go_stop_go = pytest.param(
 )
 
 """
+CARLA 0.9.11:
 Go straight, increase speed up to 4 m/s and maintain that speed
 by updating throttle to 0.42.
 """
-SCENARIO_gear_1_to_40ms = pytest.param(
+SCENARIO_gear1_to_40ms = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
         spawn_shift=None,
@@ -269,10 +275,11 @@ SCENARIO_gear_1_to_40ms = pytest.param(
             )
         ]
     ),
-    id="gear_1_to_40ms"
+    id="gear1_to_40ms"
 )
 
 """
+CARLA 0.9.11:
 Also achieve going to speed 4m/s, albeit slowly
 by fixing the throttle to 0.42.
 """
@@ -357,6 +364,134 @@ SCENARIO_gear_1_right_turn05 = pytest.param(
     id="gear_1_right_turn05"
 )
 
+"""
+CARLA 0.9.13: reaches 16 m/s in 5s; stays there.
+"""
+SCENARIO_gear1_throttle1 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=300,
+        controls=[
+            util.AttrDict(
+                interval=(0, 300),
+                control=carlautil.create_gear_control(throttle=1.)
+            )
+        ]
+    ),
+    id="gear1_throttle1"
+)
+
+SCENARIO_gear1_throttle09 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=300,
+        controls=[
+            util.AttrDict(
+                interval=(0, 300),
+                control=carlautil.create_gear_control(throttle=0.9)
+            )
+        ]
+    ),
+    id="gear1_throttle09"
+)
+
+SCENARIO_gear1_throttle08 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.8)
+            )
+        ]
+    ),
+    id="gear1_throttle08"
+)
+
+SCENARIO_gear1_throttle07 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.7)
+            )
+        ]
+    ),
+    id="gear1_throttle07"
+)
+
+SCENARIO_gear1_throttle06 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.6)
+            )
+        ]
+    ),
+    id="gear1_throttle06"
+)
+
+SCENARIO_gear1_throttle05 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=500,
+        controls=[
+            util.AttrDict(
+                interval=(0, 500),
+                control=carlautil.create_gear_control(throttle=0.5)
+            )
+        ]
+    ),
+    id="gear1_throttle05"
+)
+
+SCENARIO_gear1_throttle04 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.4)
+            )
+        ]
+    ),
+    id="gear1_throttle04"
+)
+
+SCENARIO_gear1_throttle03 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.3)
+            )
+        ]
+    ),
+    id="gear1_throttle03"
+)
+
+SCENARIO_gear1_throttle02 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=264,
+        run_steps=400,
+        controls=[
+            util.AttrDict(
+                interval=(0, 400),
+                control=carlautil.create_gear_control(throttle=0.2)
+            )
+        ]
+    ),
+    id="gear1_throttle02"
+)
 
 @pytest.mark.parametrize(
     "scenario_params",
@@ -365,11 +500,20 @@ SCENARIO_gear_1_right_turn05 = pytest.param(
         SCENARIO_brake,
         SCENARIO_go_stop_go,
         SCENARIO_gear_1_go_stop_go,
-        SCENARIO_gear_1_to_40ms,
+        SCENARIO_gear1_to_40ms,
         SCENARIO_gear_1_to_40ms_slow,
         SCENARIO_gear_1_right_turn10,
-        SCENARIO_gear_1_right_turn05
+        SCENARIO_gear_1_right_turn05,
+        SCENARIO_gear1_throttle1,
+        SCENARIO_gear1_throttle09,
+        SCENARIO_gear1_throttle08,
+        SCENARIO_gear1_throttle07,
+        SCENARIO_gear1_throttle06,
+        SCENARIO_gear1_throttle05,
+        SCENARIO_gear1_throttle04,
+        SCENARIO_gear1_throttle03,
+        SCENARIO_gear1_throttle02,
     ]
 )
-def test_Town03_scenario(scenario_params, carla_Town03_synchronous):
-    scenario(scenario_params, carla_Town03_synchronous)
+def test_Town03_scenario(scenario_params, carla_Town03_synchronous, request):
+    scenario(scenario_params, carla_Town03_synchronous, request)

@@ -22,6 +22,10 @@ def get_speed(vehicle):
     vel = vehicle.get_velocity()
     return 3.6 * math.sqrt(vel.x ** 2 + vel.y ** 2 + vel.z ** 2)
 
+class PIDCoefficients(util.AttrDict):
+    def __init__(self, K_P=1.0, K_D=0.0, K_I=0.0):
+        super().__init__(K_P=K_P, K_D=K_D, K_I=K_I)
+
 class VehiclePIDController():
     """
     VehiclePIDController is the combination of two PID controllers
