@@ -40,21 +40,16 @@ from ..plotting import (
     PlotSimulation,
     PlotPIDController
 )
-from ..util import (
-    get_approx_union,
-    get_vertices_from_centers
-)
+from ..util import compute_L4_outerapproximation
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...dynamics.bicycle_v2 import VehicleModel
-from ...lowlevel.v3 import VehiclePIDController
+from ...lowlevel.v4 import VehiclePIDController
 from ....generate import AbstractDataCollector
 from ....generate import create_semantic_lidar_blueprint
 from ....generate.map import MapQuerier
 from ....generate.scene import OnlineConfig
-from ....generate.scene.v2_2.trajectron_scene import (
-    TrajectronPlusPlusSceneBuilder
-)
+from ....generate.scene.v3_2.trajectron_scene import TrajectronPlusPlusSceneBuilder
 from ....profiling import profile
 from ....exception import InSimulationException
 
@@ -82,15 +77,19 @@ class MidlevelAgent(AbstractDataCollector):
         # Slack variable for solver
         params.M_big = 10_000
         # Control variable for solver, setting max/min acceleration/speed
-        params.max_a = 1
+        params.max_a = 3.5
         params.min_a = -7
-        params.max_v = 5
+        params.max_v = 10
         # objective : util.AttrDict
         #   Parameters in objective function. 
         params.objective = util.AttrDict(
-            w_final=2.,
-            w_ch_accel=0.5, w_ch_turning=0.5,
-            w_accel=0.5, w_turning=0.5
+            w_final=3.0,
+            w_ch_accel=0.5,
+            w_ch_turning=2.0,
+            w_ch_joint=0.1,
+            w_accel=0.5,
+            w_turning=1.0,
+            w_joint=0.2,
         )
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -412,7 +411,9 @@ class MidlevelAgent(AbstractDataCollector):
         for idx, node in enumerate(nodes):
             if node.id == 'ego':
                 continue
-            lon, lat, _ = carlautil.actor_to_bbox_ndarray(self.__other_vehicles[int(node.id)])
+            lon, lat, _ = carlautil.actor_to_bbox_ndarray(
+                self.__other_vehicles[int(node.id)]
+            )
             veh_bbox = np.array([lon, lat])
             veh_gt         = ground_truth_dict[timestep][node] + minpos
             veh_past       = past_dict[timestep][node] + minpos
@@ -477,7 +478,10 @@ class MidlevelAgent(AbstractDataCollector):
         # N_traj : int 
         #   Number of planned trajectories possible to compute
         params.N_traj = np.prod(params.K)
-        if self.__random_mcc:
+        if params.O == 0:
+            params.sublist_joint_decisions = [[]]
+            params.N_select = 1
+        elif self.__random_mcc:
             """How does random multiple coinciding control work?
             each item in the product set S_1 X S_2 X S_3 X S_4
             represents the particular choices each vehicles make 
@@ -547,8 +551,8 @@ class MidlevelAgent(AbstractDataCollector):
             Global (x, y) coordinates for car's destination at for the MPC step.
         """
         position = params.initial_state.world[:2]
-        v_lim = self.__ego_vehicle.get_speed_limit()
-        distance = 0.75 * v_lim * self.__steptime * self.__control_horizon
+        v_lim = min(self.__ego_vehicle.get_speed_limit() * 0.28, self.__params.max_v)
+        distance = v_lim * self.__steptime * self.__control_horizon + 1
         segments = self.__road_boundary.collect_segs_polytopes_and_goal(
             position, distance
         )
@@ -589,10 +593,10 @@ class MidlevelAgent(AbstractDataCollector):
                 for t in range(T):
                     ps = ovehicle.pred_positions[latent_idx][:,t]
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
-                    vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
-                            ps, yaws, ovehicle.bbox)
-                    # vertices[t][latent_idx][ov_idx] = util.npu.vertices_of_bboxes(
+                    # vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
                     #         ps, yaws, ovehicle.bbox)
+                    vertices[t][latent_idx][ov_idx] = util.npu.vertices_of_bboxes(
+                            ps, yaws, ovehicle.bbox)
 
         return vertices
 
@@ -678,7 +682,9 @@ class MidlevelAgent(AbstractDataCollector):
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
-                    A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
+                    A_union_k, b_union_k = compute_L4_outerapproximation(
+                        mean_theta_k, vertices_k
+                    )
                     A_union[t][latent_idx][ov_idx] = A_union_k
                     b_union[t][latent_idx][ov_idx] = b_union_k
 
@@ -770,10 +776,16 @@ class MidlevelAgent(AbstractDataCollector):
         for u1, u2 in util.pairwise(U[:, 1]):
             _u = u1 - u2
             cost += obj.w_ch_turning * _u * _u
+        # change in joint objective
+        for u1, u2 in util.pairwise(U[:]):
+            _u = u1 - u2
+            cost += obj.w_ch_joint * _u[0] * _u[1]
         # acceleration objective
         cost += obj.w_accel * np.sum(U[:, 0] ** 2)
         # turning objective
         cost += obj.w_turning * np.sum(U[:, 1] ** 2)
+        # joint objective
+        cost += 2. * obj.w_joint * np.sum(U[:, 0] * U[:, 1])
         return cost
     
     def compute_mean_objective(self, X, U, goal):

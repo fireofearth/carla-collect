@@ -47,6 +47,7 @@ import carlautil.debug
 
 
 class MotionPlanner(object):
+    
     def __make_global_params(self):
         """Get scenario wide parameters used across all loops"""
         params = util.AttrDict()

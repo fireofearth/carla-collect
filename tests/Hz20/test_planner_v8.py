@@ -18,6 +18,8 @@ from tests.Hz20.params import (
     SCENARIO_scene3_ov1_shift10,
     SCENARIO_scene3_ov4_gap28,
     SCENARIO_scene3_ov4_gap34,
+    SCENARIO_scene4_ov1_brake,
+    SCENARIO_scene4_ov1_accel,
 )
 
 @pytest.mark.parametrize(
@@ -40,6 +42,8 @@ from tests.Hz20.params import (
         SCENARIO_scene3_ov1_shift10,
         SCENARIO_scene3_ov4_gap28,
         SCENARIO_scene3_ov4_gap34,
+        SCENARIO_scene4_ov1_brake,
+        SCENARIO_scene4_ov1_accel,
     ]
 )
 def test_Town03_scenario(scenario_params, ctrl_params,

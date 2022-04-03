@@ -133,6 +133,80 @@ SCENARIO_scene3_ov4_gap34 = pytest.param(
     id="scene3_ov4_gap34"
 )
 
+CONTROLS_scene4 = [
+    util.AttrDict(
+        interval=(0, 12*10,),
+        control=carla.VehicleControl(throttle=0.6)
+    ),
+]
+SCENARIO_scene4_ov1_brake = pytest.param(
+    # Small T-intersection and road bend
+    # EV breaks so OV can cross
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, 0],
+        n_burn_interval=12,
+        run_interval=26,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov1_brake"
+)
+SCENARIO_scene4_ov1_fail = pytest.param(
+    # Small T-intersection and road bend
+    # EV infeasible
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, -12],
+        n_burn_interval=12,
+        run_interval=26,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov1_fail"
+)
+SCENARIO_scene4_ov1_accel = pytest.param(
+    # Small T-intersection and road bend
+    # EV accelerates to overtake OV.
+    # EV can cross road in approx 4 seconds.
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, -19],
+        n_burn_interval=12,
+        run_interval=26,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov1_accel"
+)
+
+MONTECARLO_scene4_ov1 = pytest.param(
+    # Small T-intersection and road bend
+    # EV accelerates to overtake OV.
+    # EV can cross road in approx 4 seconds.
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, [-17, -21]],
+        n_burn_interval=12,
+        run_interval=26,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov1"
+)
+
 ####################
 # Control parameters
 

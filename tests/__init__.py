@@ -1,5 +1,6 @@
 import os
 import enum
+import random
 
 import carla
 import utility as util
@@ -58,11 +59,12 @@ class ScenarioParameters(util.AttrDict):
         The list at the i-th place designates the route of the i-th OV.
         Route commands are the strings: Void, Left, Right, Straight
         LaneFollow, ChangeLaneLeft, ChangeLaneRight, RoadEnd
-    spawn_shifts : number or none
+    spawn_shifts : list of (number or list or None)
         spawn shifts for the vehicles j=1,2,... in
         `[ego_spawn_idx] + other_spawn_ids`.
         Value of `spawn_shifts[j]` is the distance
         from original spawn point to place vehicle j.
+        Let `spawn_shifts[j] = [lo, hi]` to sample a shift uniformly between (lo, hi).
         Let `spawn_shifts[j] = None` to disable shifting.
     n_burn_interval : int
         Number of timesteps before starting motion planning.
@@ -141,8 +143,15 @@ class CtrlParameters(util.AttrDict):
 def shift_spawn_point(carla_map, k, spawn_shifts, spawn_point):
     try:
         spawn_shift = spawn_shifts[k]
+    except IndexError:
+        return spawn_point
+    try:
+        spawn_shift = random.uniform(spawn_shift[0], spawn_shift[1])
+    except IndexError:
+        pass
+    try:
         spawn_shift < 0
-    except (TypeError, IndexError) as e:
+    except TypeError:
         return spawn_point
     return carlautil.move_along_road(carla_map, spawn_point, spawn_shift)
 

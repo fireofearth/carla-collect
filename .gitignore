@@ -1,6 +1,7 @@
 carla_v*_dataset/
 carla_dataset_v*/
 out/
+plot/
 plots/
 __pycache__/
 cache/

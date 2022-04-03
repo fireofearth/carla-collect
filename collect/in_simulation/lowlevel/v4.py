@@ -202,9 +202,10 @@ class VehiclePIDController(object):
             self.__longitudinal_coeffs = PIDCoefficients(
                 K_P=1.60,
                 K_I=0.55,
+                # K_I=1.0,
                 K_D=0.20,
             )
-            break_prop=0.02
+            break_prop=0.01
         else:
             self.__lateral_coeffs = PIDCoefficients(
                 K_P=5.70,

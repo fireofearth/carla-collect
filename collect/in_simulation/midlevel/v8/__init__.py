@@ -38,7 +38,7 @@ from ..plotting import (
     PlotSimulation,
     PlotPIDController,
 )
-from ..util import get_approx_union, get_vertices_from_centers
+from ..util import compute_L4_outerapproximation
 from ..ovehicle import OVehicle
 from ..prediction import generate_vehicle_latents
 from ...dynamics.bicycle_v2 import VehicleModel
@@ -88,7 +88,7 @@ class MidlevelAgent(AbstractDataCollector):
             w_ch_joint=0.1,
             w_accel=0.5,
             w_turning=1.0,
-            w_joint=0.2
+            w_joint=0.2,
         )
         # Maximum steering angle
         physics_control = self.__ego_vehicle.get_physics_control()
@@ -525,7 +525,7 @@ class MidlevelAgent(AbstractDataCollector):
         """
         position = params.initial_state.world[:2]
         v_lim = min(self.__ego_vehicle.get_speed_limit() * 0.28, self.__params.max_v)
-        distance = v_lim * self.__steptime * self.__control_horizon
+        distance = v_lim * self.__steptime * self.__control_horizon + 1
         segments = self.__road_boundary.collect_segs_polytopes_and_goal(
             position, distance
         )
@@ -554,7 +554,6 @@ class MidlevelAgent(AbstractDataCollector):
 
     def __compute_vertices(self, params, ovehicles):
         """Compute verticles from predictions.
-        TODO: Refactor get_vertices_from_centers() to util.npu.vertices_of_bboxes()
         """
         K, n_ov = params.K, params.O
         T = self.__prediction_horizon
@@ -564,11 +563,8 @@ class MidlevelAgent(AbstractDataCollector):
                 for t in range(T):
                     ps = ovehicle.pred_positions[latent_idx][:, t]
                     yaws = ovehicle.pred_yaws[latent_idx][:, t]
-                    vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
-                        ps, yaws, ovehicle.bbox
-                    )
-                    # vertices[t][latent_idx][ov_idx] = util.npu.vertices_of_bboxes(
-                    #         ps, yaws, ovehicle.bbox)
+                    vertices[t][latent_idx][ov_idx] = util.npu.vertices_of_bboxes(
+                            ps, yaws, ovehicle.bbox)
 
         return vertices
 
@@ -656,7 +652,9 @@ class MidlevelAgent(AbstractDataCollector):
                     yaws = ovehicle.pred_yaws[latent_idx][:, t]
                     vertices_k = vertices[t][latent_idx][ov_idx]
                     mean_theta_k = np.mean(yaws)
-                    A_union_k, b_union_k = get_approx_union(mean_theta_k, vertices_k)
+                    A_union_k, b_union_k = compute_L4_outerapproximation(
+                        mean_theta_k, vertices_k
+                    )
                     A_union[t][latent_idx][ov_idx] = A_union_k
                     b_union[t][latent_idx][ov_idx] = b_union_k
 

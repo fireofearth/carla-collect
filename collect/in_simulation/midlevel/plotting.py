@@ -75,6 +75,8 @@ class PlotPredictiveControl(object):
     """Plot predictions and control trajectory
     for contingency planning predictive control."""
 
+    PADDING = 40
+
     def __init__(
         self,
         pred_result,
@@ -322,8 +324,12 @@ class PlotPredictiveControl(object):
         # make extent the same size across all timesteps,
         # with planned trajectory centered
         x_mid, y_mid = (x_max + x_min) / 2, (y_max + y_min) / 2
-        extent = (x_mid - PADDING, x_mid + PADDING, y_mid - PADDING, y_mid + PADDING)
-
+        extent = (
+            x_mid - self.PADDING,
+            x_mid + self.PADDING,
+            y_mid - self.PADDING,
+            y_mid + self.PADDING
+        )
         """Plots for paper."""
         if self.grid_shape == "tall":
             # make the plotting grid tall
@@ -386,7 +392,12 @@ class PlotPredictiveControl(object):
         x_min, y_min = np.min(_X_star, axis=0)
         x_max, y_max = np.max(_X_star, axis=0)
         x_mid, y_mid = (x_max + x_min) / 2, (y_max + y_min) / 2
-        extent = (x_mid - PADDING, x_mid + PADDING, y_mid - PADDING, y_mid + PADDING)
+        extent = (
+            x_mid - self.PADDING,
+            x_mid + self.PADDING,
+            y_mid - self.PADDING,
+            y_mid + self.PADDING
+        )
         for traj_idx in range(self.params.N_select):
             """Generate a single plot for each combination of overapproximations
             that we have applied control over."""
@@ -412,7 +423,7 @@ class PlotPredictiveControl(object):
             fig.savefig(os.path.join("out", f"{filename}_traj{traj_idx + 1}.png"))
             plt.close(fig)
 
-    def plot_failure_timestep(self, ax, t, extent=None):
+    def plot_oa_failure_timestep(self, ax, t, extent=None):
         self.__render_scene_bev(ax)
         self.__plot_goal(ax)
         self.__plot_safe_region(ax)
@@ -421,9 +432,9 @@ class PlotPredictiveControl(object):
         self.__plot_oa_ov_clusters(ax, t)
         self.__set_extent(ax, t, extent=extent)
 
-    def plot_oa_failure(self, filename="optim_fail"):
-        x_min, y_min = self.params.initial_state.world[:2] - PADDING
-        x_max, y_max = self.params.initial_state.world[:2] + PADDING
+    def plot_oa_failure(self, filename="oa_optim_fail"):
+        x_min, y_min = self.params.initial_state.world[:2] - self.PADDING
+        x_max, y_max = self.params.initial_state.world[:2] + self.PADDING
         extent = (x_min, x_max, y_min, y_max)
 
         """Plots for paper."""
@@ -441,7 +452,7 @@ class PlotPredictiveControl(object):
             NotImplementedError(f"Unknown grid shape {self.grid_shape}")
         axes = axes.ravel()
         for t, ax in zip(range(self.T), axes):
-            self.plot_prediction_timestep(ax, t, extent=extent)
+            self.plot_oa_failure_timestep(ax, t, extent=extent)
         fig.tight_layout()
         fig.savefig(os.path.join("out", f"{filename}.png"))
         plt.close(fig)
@@ -456,8 +467,8 @@ class PlotPredictiveControl(object):
         self.__set_extent(ax, t, extent=extent)
 
     def plot_mcc_failure(self, filename="mcc_optim_fail"):
-        x_min, y_min = self.params.initial_state.world[:2] - PADDING
-        x_max, y_max = self.params.initial_state.world[:2] + PADDING
+        x_min, y_min = self.params.initial_state.world[:2] - self.PADDING
+        x_max, y_max = self.params.initial_state.world[:2] + self.PADDING
         extent = (x_min, x_max, y_min, y_max)
         for traj_idx in range(self.params.N_select):
             """Generate a single plot for each combination of overapproximations
