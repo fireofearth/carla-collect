@@ -617,6 +617,24 @@ class RoadBoundaryConstraint(object):
     @property
     def path_length(self):
         return self.distances[-1]
+
+    def get_point_from_start(self, distance):
+        """Get goal point distance away from starting waypoint along path.
+        
+        Parameters
+        ==========
+        distance : float
+            Distance away from starting waypoint.
+        
+        Returns
+        =======
+        ndarray
+            (x, y) point distance away from starting waypoing along path.
+        """
+        for spline in self.splines:
+            if spline.x[0] <= distance and distance <= spline.x[-1]:
+                return spline(distance)
+        return self.points[-1]
         
     def collect_segs_polytopes_and_goal(self, position, distance):
         """Collect the road boundary constraints and goal sufficient

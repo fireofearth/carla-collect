@@ -312,18 +312,26 @@ class MidlevelAgent(AbstractDataCollector):
                 lowlevel=collections.OrderedDict(),
             )
 
-    def get_vehicle_state(self):
+    def get_vehicle_state(self, flip_x=False, flip_y=False):
         """Get the vehicle state as an ndarray. State consists of
         [pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, acc_x, acc_y, acc_z,
         length, width, height, pitch, yaw, roll] where pitch, yaw, roll are in
         radians."""
-        return carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle)
+        return carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(
+            self.__ego_vehicle, flip_x=flip_x, flip_y=flip_y
+        )
 
     def get_goal(self):
         return copy.copy(self.__goal)
 
-    def set_goal(self, x, y, is_relative=True):
-        self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
+    def set_goal(self, x=None, y=None, distance=None, is_relative=True, **kwargs):
+        if x is not None and y is not None:
+            self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
+        elif distance is not None:
+            point = self.__road_boundary.get_point_from_start(distance)
+            self.__goal = util.AttrDict(x=point[0], y=point[1], is_relative=False)
+        else:
+            raise NotImplementedError("Unknown method of setting motion planner goal.")
 
     def start_sensor(self):
         # We need to pass the lambda a weak reference to
@@ -582,9 +590,7 @@ class MidlevelAgent(AbstractDataCollector):
         return constraints
 
     def __compute_vertices(self, params, ovehicles):
-        """Compute verticles from predictions.
-        TODO: Refactor get_vertices_from_centers() to util.npu.vertices_of_bboxes()
-        """
+        """Compute verticles from predictions."""
         K, n_ov = params.K, params.O
         T = self.__prediction_horizon
         vertices = np.empty((T, np.max(K), n_ov,), dtype=object).tolist()
@@ -593,8 +599,6 @@ class MidlevelAgent(AbstractDataCollector):
                 for t in range(T):
                     ps = ovehicle.pred_positions[latent_idx][:,t]
                     yaws = ovehicle.pred_yaws[latent_idx][:,t]
-                    # vertices[t][latent_idx][ov_idx] = get_vertices_from_centers(
-                    #         ps, yaws, ovehicle.bbox)
                     vertices[t][latent_idx][ov_idx] = util.npu.vertices_of_bboxes(
                             ps, yaws, ovehicle.bbox)
 
@@ -857,12 +861,22 @@ class MidlevelAgent(AbstractDataCollector):
             )
             model.add_constraints(constraints)
         else:
+            Delta = None
             vertices = A_unions = b_unions = None
 
         """Set up coinciding constraints"""
         for t in range(0, self.__n_coincide):
             for u1, u2 in util.pairwise(U[:,t]):
                 model.add_constraints([l == r for (l, r) in zip(u1, u2)])
+            # TODO: constraints on binary variables actually makes optimization slower. Why?
+            # if Omicron is not None:
+            #     for o1, o2 in util.pairwise(Omicron[:,:,t]):
+            #         model.add_constraints([l == r for (l, r) in zip(o1, o2)])
+            # if Delta is not None:
+            #     for d1, d2 in util.pairwise(Delta[:,t]):
+            #         d1 = d1.reshape(-1)
+            #         d2 = d2.reshape(-1)
+            #         model.add_constraints([l == r for (l, r) in zip(d1, d2)])
 
         """Compute and minimize objective"""
         cost = self.compute_mean_objective(X, U, goal)
@@ -946,7 +960,7 @@ class MidlevelAgent(AbstractDataCollector):
             raise error
         
         """use control input next round for warm starting."""
-        # self.__U_warmstarting = ctrl_result.U_star
+        self.__U_warmstarting = ctrl_result.U_star
 
         if self.plot_simulation:
             """Save planned trajectory for final plotting"""

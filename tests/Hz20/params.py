@@ -21,8 +21,8 @@ STRAIGHT_ROUTES = [
 
 CONTROLS_scene3 = [
     util.AttrDict(
-        interval=(0, 9*10,),
-        control=carlautil.create_gear_control(throttle=0.4)
+        interval=(0, 12*10,),
+        control=carlautil.create_gear_control(throttle=0.53)
     ),
 ]
 
@@ -118,19 +118,19 @@ SCENARIO_scene3_ov4_gap28 = pytest.param(
 
 """Left turn of low curvature to angled road with 4 other vehicles.
 34 m gap between vehicles."""
-SCENARIO_scene3_ov4_gap34 = pytest.param(
+SCENARIO_scene3_ov4_gap60 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
-        other_spawn_ids=[14, 14, 15, 15],
-        spawn_shifts=[-5, 31, 23, -11, -19],
+        other_spawn_ids=[15, 14, 15, 14],
+        spawn_shifts=[-15, 20, 20, -40, -40],
         other_routes=STRAIGHT_ROUTES,
-        n_burn_interval=10,
-        run_interval=22,
+        n_burn_interval=12,
+        run_interval=30,
         controls=CONTROLS_scene3,
         turn_choices=[1],
-        max_distance=100,
+        max_distance=160,
     ),
-    id="scene3_ov4_gap34"
+    id="scene3_ov4_gap60"
 )
 
 CONTROLS_scene4 = [
@@ -189,7 +189,31 @@ SCENARIO_scene4_ov1_accel = pytest.param(
     id="scene4_ov1_accel"
 )
 
-MONTECARLO_scene4_ov1 = pytest.param(
+#####################################
+# Scenario parameters for Monte-Carlo
+
+"""Left turn of low curvature to angled road with 4 other vehicles.
+34 m gap between vehicles.
+Should succeed within 30 steps (average is about 25 steps).
+May not traverse intersection within 30 steps if EV yields to vehicles in the back.
+"""
+MONTEOCARLO_scene3_ov4_gap60 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=85,
+        other_spawn_ids=[15, 14, 15, 14],
+        spawn_shifts=[-15, 20, 20, [-42, -38], [-42, -38]],
+        other_routes=STRAIGHT_ROUTES,
+        n_burn_interval=12,
+        run_interval=30,
+        controls=CONTROLS_scene3,
+        goal=util.AttrDict(distance=110),
+        turn_choices=[1],
+        max_distance=120,
+    ),
+    id="scene3_ov4_gap60"
+)
+
+MONTECARLO_scene4_ov1_accel = pytest.param(
     # Small T-intersection and road bend
     # EV accelerates to overtake OV.
     # EV can cross road in approx 4 seconds.
@@ -199,12 +223,31 @@ MONTECARLO_scene4_ov1 = pytest.param(
         other_routes=STRAIGHT_ROUTES,
         spawn_shifts=[-17, [-17, -21]],
         n_burn_interval=12,
-        run_interval=26,
+        run_interval=30,
         controls=CONTROLS_scene4,
+        goal=util.AttrDict(distance=100),
         turn_choices=[0],
         max_distance=200
     ),
-    id="scene4_ov1"
+    id="scene4_ov1_accel"
+)
+
+MONTECARLO_scene4_ov1_brake = pytest.param(
+    # Small T-intersection and road bend
+    # EV breaks so OV can cross
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, [-4, 0]],
+        n_burn_interval=12,
+        run_interval=50,
+        controls=CONTROLS_scene4,
+        goal=util.AttrDict(distance=100),
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov1_brake"
 )
 
 ####################
@@ -273,6 +316,19 @@ VARIABLES_ph6_step1_ncoin1_r_np5000 = pytest.param(
         loop_type=LoopEnum.CLOSED_LOOP
     ),
     id="ph6_step1_ncoin1_r_np5000"
+)
+
+VARIABLES_ph8_step1_ncoin1_r_np5000 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=8,
+        control_horizon=8,
+        step_horizon=1,
+        n_predictions=5000,
+        n_coincide=1,
+        random_mcc=True,
+        loop_type=LoopEnum.CLOSED_LOOP
+    ),
+    id="ph8_step1_ncoin1_r_np5000"
 )
 
 VARIABLES_ph8_step1_ncoin1_r_np100 = pytest.param(

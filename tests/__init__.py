@@ -78,7 +78,7 @@ class ScenarioParameters(util.AttrDict):
     goal : util.AttrDict
         Optional goal destination the motion planned vehicle should go to.
         By default the vehicle moves forwards.
-        Not applicable to curved road segmented boundary constraints.
+        Does not affect motion planning for curved road boundary constraints.
     turn_choices : list of int
         Indices of turns at each junction along the path from start_wp onwards.
     max_distance : number
@@ -147,7 +147,7 @@ def shift_spawn_point(carla_map, k, spawn_shifts, spawn_point):
         return spawn_point
     try:
         spawn_shift = random.uniform(spawn_shift[0], spawn_shift[1])
-    except IndexError:
+    except TypeError:
         pass
     try:
         spawn_shift < 0

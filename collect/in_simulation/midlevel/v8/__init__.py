@@ -302,18 +302,26 @@ class MidlevelAgent(AbstractDataCollector):
                 lowlevel=collections.OrderedDict(),
             )
 
-    def get_vehicle_state(self):
+    def get_vehicle_state(self, flip_x=False, flip_y=False):
         """Get the vehicle state as an ndarray. State consists of
         [pos_x, pos_y, pos_z, vel_x, vel_y, vel_z, acc_x, acc_y, acc_z,
         length, width, height, pitch, yaw, roll] where pitch, yaw, roll are in
         radians."""
-        return carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(self.__ego_vehicle)
+        return carlautil.actor_to_Lxyz_Vxyz_Axyz_Rpyr_ndarray(
+            self.__ego_vehicle, flip_x=flip_x, flip_y=flip_y
+        )
 
     def get_goal(self):
         return copy.copy(self.__goal)
 
-    def set_goal(self, x, y, is_relative=True):
-        self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
+    def set_goal(self, x=None, y=None, distance=None, is_relative=True, **kwargs):
+        if x is not None and y is not None:
+            self.__goal = util.AttrDict(x=x, y=y, is_relative=is_relative)
+        elif distance is not None:
+            point = self.__road_boundary.get_point_from_start(distance)
+            self.__goal = util.AttrDict(x=point[0], y=point[1], is_relative=False)
+        else:
+            raise NotImplementedError("Unknown method of setting motion planner goal.")
 
     def start_sensor(self):
         # We need to pass the lambda a weak reference to
@@ -553,8 +561,7 @@ class MidlevelAgent(AbstractDataCollector):
         return constraints
 
     def __compute_vertices(self, params, ovehicles):
-        """Compute verticles from predictions.
-        """
+        """Compute verticles from predictions."""
         K, n_ov = params.K, params.O
         T = self.__prediction_horizon
         vertices = np.empty((T, np.max(K), n_ov), dtype=object).tolist()
