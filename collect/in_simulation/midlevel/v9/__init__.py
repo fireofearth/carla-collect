@@ -944,7 +944,7 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__control_horizon, ego_bbox, T_coin=self.__n_coincide
             ).plot_mcc_prediction(filename=filename)
 
-    # @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
+    @profile(sort_by='cumulative', lines_to_print=50, strip_dirs=True)
     def __compute_prediction_controls(self, frame):
         pred_result = self.do_prediction(frame)
         ovehicles = self.make_ovehicles(pred_result)

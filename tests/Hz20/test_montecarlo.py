@@ -17,6 +17,7 @@ from tests.Hz20.params import (
     MONTEOCARLO_scene3_ov4_gap60,
     MONTECARLO_scene4_ov1_accel,
     MONTECARLO_scene4_ov1_brake,
+    MONTECARLO_scene4_ov2_gap55,
 )
 
 MIDLEVEL_v8 = pytest.param(
@@ -44,6 +45,7 @@ MIDLEVEL_v9 = pytest.param(
         MONTEOCARLO_scene3_ov4_gap60,
         MONTECARLO_scene4_ov1_accel,
         MONTECARLO_scene4_ov1_brake,
+        MONTECARLO_scene4_ov2_gap55,
     ]
 )
 @pytest.mark.parametrize(
@@ -53,7 +55,7 @@ MIDLEVEL_v9 = pytest.param(
 def test_Town03_scenario(midlevel_agent, scenario_params, ctrl_params,
     carla_Town03_synchronous, eval_env, eval_stg_cuda
 ):
-    n_simulations = 100
+    n_simulations = 4
     MonteCarloScenario(
         scenario_params,
         ctrl_params,

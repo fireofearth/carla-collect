@@ -117,7 +117,7 @@ SCENARIO_scene3_ov4_gap28 = pytest.param(
 )
 
 """Left turn of low curvature to angled road with 4 other vehicles.
-34 m gap between vehicles."""
+60 m gap between OVs at the front and OVs at the back."""
 SCENARIO_scene3_ov4_gap60 = pytest.param(
     ScenarioParameters(
         ego_spawn_idx=85,
@@ -188,6 +188,22 @@ SCENARIO_scene4_ov1_accel = pytest.param(
     ),
     id="scene4_ov1_accel"
 )
+SCENARIO_scene4_ov2_gap55 = pytest.param(
+    # Small T-intersection and road bend
+    # EV passes between 2 OVs.
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201, 201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-10, 3, -52],
+        n_burn_interval=12,
+        run_interval=20,
+        controls=CONTROLS_scene4,
+        turn_choices=[0],
+        max_distance=150
+    ),
+    id="scene4_ov2_gap55"
+)
 
 #####################################
 # Scenario parameters for Monte-Carlo
@@ -248,6 +264,24 @@ MONTECARLO_scene4_ov1_brake = pytest.param(
         max_distance=200
     ),
     id="scene4_ov1_brake"
+)
+
+MONTECARLO_scene4_ov2_gap55 = pytest.param(
+    # Small T-intersection and road bend
+    # EV passes between 2 OVs.
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201, 201],
+        other_routes=STRAIGHT_ROUTES,
+        spawn_shifts=[-17, 3, [-54, -50]],
+        n_burn_interval=12,
+        run_interval=40,
+        controls=CONTROLS_scene4,
+        goal=util.AttrDict(distance=100),
+        turn_choices=[0],
+        max_distance=200
+    ),
+    id="scene4_ov2_gap55"
 )
 
 ####################

@@ -33,10 +33,10 @@ from collect.generate.scene.v3_2.trajectron_scene import (
 )
 
 
-SCENARIO_straight4 = pytest.param(
+SCENARIO_scene3_veh4 = pytest.param(
     ScenarioParameters(
-        ego_spawn_idx=14,
-        other_spawn_ids=[14, 14, 14],
+        ego_spawn_idx=15,
+        other_spawn_ids=[14, 15, 14],
         spawn_shifts=[-5, 11, 3, -13],
         other_routes=[
             ["Straight"],
@@ -47,9 +47,39 @@ SCENARIO_straight4 = pytest.param(
         n_burn_interval=10,
         run_interval=20,
     ),
-    id="straight4"
+    id="scene3_veh4"
+)
+SCENARIO_scene4_veh3 = pytest.param(
+    ScenarioParameters(
+        ego_spawn_idx=89,
+        other_spawn_ids=[201, 201],
+        spawn_shifts=[-15, 0, -30],
+        other_routes=[
+            ["Straight"],
+            ["Straight"],
+            ["Straight"],
+            ["Straight"]
+        ],
+        n_burn_interval=15,
+        run_interval=25,
+    ),
+    id="scene4_veh3"
 )
 
+VARIABLES_ph6_np1000 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=6,
+        n_predictions=1000
+    ),
+    id="ph6_np1000"
+)
+VARIABLES_ph6_np5000 = pytest.param(
+    CtrlParameters(
+        prediction_horizon=6,
+        n_predictions=5000
+    ),
+    id="ph6_np5000"
+)
 VARIABLES_ph8_np1000 = pytest.param(
     CtrlParameters(
         prediction_horizon=8,
@@ -57,7 +87,6 @@ VARIABLES_ph8_np1000 = pytest.param(
     ),
     id="ph8_np1000"
 )
-
 VARIABLES_ph8_np5000 = pytest.param(
     CtrlParameters(
         prediction_horizon=8,
@@ -114,8 +143,8 @@ class ClusterScenario(object):
                     other_vehicles.append(vehicle)
                     other_vehicle_ids.append(vehicle.id)
                 vehicle.set_autopilot(True, self.traffic_manager.get_port())
-                if self.scenario_params.ignore_signs:
-                    self.traffic_manager.ignore_signs_percentage(vehicle, 100.)
+                # if self.scenario_params.ignore_signs:
+                #     self.traffic_manager.ignore_signs_percentage(vehicle, 100.)
                 if self.scenario_params.ignore_lights:
                     self.traffic_manager.ignore_lights_percentage(vehicle, 100.)
                 # if self.scenario_params.ignore_vehicles:
@@ -151,12 +180,13 @@ class ClusterScenario(object):
                 except AttributeError:
                     break
 
-            locations = carlautil.to_locations_ndarray(other_vehicles)
+            locations = carlautil.to_locations_ndarray([ego_vehicle] + other_vehicles)
             location = carlautil.ndarray_to_location(np.mean(locations, axis=0))
             location += carla.Location(z=50)
+            rotation = carla.Rotation(pitch=-90, yaw=0, roll=0)
             self.world.get_spectator().set_transform(
                 carla.Transform(
-                    location, carla.Rotation(pitch=-70, yaw=-90, roll=20)
+                    location, rotation
                 )
             )
 
@@ -179,13 +209,16 @@ class ClusterScenario(object):
     "ctrl_params",
     [
         VARIABLES_ph8_np1000,
-        VARIABLES_ph8_np5000
+        VARIABLES_ph8_np5000,
+        VARIABLES_ph6_np1000,
+        VARIABLES_ph6_np5000,
     ]
 )
 @pytest.mark.parametrize(
     "scenario_params",
     [
-        SCENARIO_straight4
+        SCENARIO_scene3_veh4,
+        SCENARIO_scene4_veh3,
     ]
 )
 def test_Town03_scenario(

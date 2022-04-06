@@ -1121,8 +1121,11 @@ class PlotCluster(object):
         self.map_data = map_data
         frames, states = util.unzip([i for i in states.items()])
         self.frames = np.array(frames)
-        self.states = np.stack(states)
-        self.bboxes = np.stack(bboxes.values())
+        # TODO: don't stack states and bboxes. Varying numbers of OVs
+        # self.states = np.stack(states)
+        # self.bboxes = np.stack(bboxes.values())
+        self.states = list(states)
+        self.bboxes = list(bboxes.values())
         self.vertices = list(vertices.values())
         self.OK_Ab_union = list(OK_Ab_union.values())
         self.T = T
@@ -1210,8 +1213,8 @@ class PlotCluster(object):
         axes = axes.ravel()
 
         cmap = cm.hsv
-        norm = clr.Normalize(vmin=1, vmax=self.T, clip=True)
-        overapprox_colors = cmap(np.linspace(0, 1, self.T))
+        norm = clr.Normalize(vmin=1, vmax=self.T + 1, clip=True)
+        overapprox_colors = cmap(np.linspace(0, 1, self.T + 1))
         for ax, o in zip(axes, range(O_max)):
             vertices = util.select_from_nested_list_at_levelindex(vertices_acrosstime, 2, o)
             vertices = util.filter_to_list(lambda a: a is not None, vertices)
@@ -1219,8 +1222,9 @@ class PlotCluster(object):
                 np.concatenate(vertices).reshape((-1, 2))
             )
             self.__render_scene_bev(ax, extent)
-            color = ovehicle_colors[o][0]
-            self.__render_vehicle_bbox(ax, n, o, color)
+            # color = ovehicle_colors[o][0]
+            # self.__render_vehicle_bbox(ax, n, o, color)
+            self.__render_vehicle_bbox(ax, n, o, "black")
 
             for t in range(self.T):
                 try:
@@ -1260,8 +1264,8 @@ class PlotCluster(object):
         axes = axes.ravel()
 
         cmap = cm.hsv
-        norm = clr.Normalize(vmin=1, vmax=self.T, clip=True)
-        overapprox_colors = cmap(np.linspace(0, 1, self.T))
+        norm = clr.Normalize(vmin=1, vmax=self.T + 1, clip=True)
+        overapprox_colors = cmap(np.linspace(0, 1, self.T + 1))
         for ax, o in zip(axes, range(O_max)):
             vertices = util.select_from_nested_list_at_levelindex(vertices_acrosstime, 2, o)
             vertices = util.filter_to_list(lambda a: a is not None, vertices)
@@ -1269,9 +1273,9 @@ class PlotCluster(object):
                 np.concatenate(vertices).reshape((-1, 2))
             )
             self.__render_scene_bev(ax, extent)
-
-            color = ovehicle_colors[o][0]
-            self.__render_vehicle_bbox(ax, n, o, color)
+            # color = ovehicle_colors[o][0]
+            # self.__render_vehicle_bbox(ax, n, o, color)
+            self.__render_vehicle_bbox(ax, n, o, "black")
 
             for t in range(self.T):
                 try:

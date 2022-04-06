@@ -15,7 +15,7 @@ def instantiate_synchronous(request, carla_Town):
     settings.fixed_delta_seconds = DELTA
     settings.synchronous_mode = True
     traffic_manager.set_synchronous_mode(True)
-    traffic_manager.set_global_distance_to_leading_vehicle(1.0)
+    traffic_manager.set_global_distance_to_leading_vehicle(5.0)
     traffic_manager.global_percentage_speed_difference(0.0)
     # Note, random seed does not work perfectly
     # traffic_manager.set_random_device_seed(SEED)

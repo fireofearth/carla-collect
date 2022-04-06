@@ -20,6 +20,7 @@ from tests.Hz20.params import (
     SCENARIO_scene3_ov4_gap60,
     SCENARIO_scene4_ov1_brake,
     SCENARIO_scene4_ov1_accel,
+    SCENARIO_scene4_ov2_gap55,
 )
 
 MIDLEVEL_v8 = pytest.param(
@@ -52,6 +53,7 @@ MIDLEVEL_v9 = pytest.param(
         SCENARIO_scene3_ov4_gap60,
         SCENARIO_scene4_ov1_brake,
         SCENARIO_scene4_ov1_accel,
+        SCENARIO_scene4_ov2_gap55,
     ]
 )
 @pytest.mark.parametrize(
