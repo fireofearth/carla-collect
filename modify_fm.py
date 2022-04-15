@@ -11,25 +11,26 @@ import random
 from glob import glob
 import re
 
-pp = pprint.PrettyPrinter(indent=4)
-
 import dill
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from collect.generate.scene.v3.trajectron_scene import augment_scene
 
 import utility as util
 import utility.arguments as uarguments
 
+from collect import OUTDIR
+from collect.generate.scene.v3.trajectron_scene import augment_scene
 from collect.generate.dataset import SampleGroupCreator, CrossValidationSplitCreator
 from collect.generate.scene.trajectron_util import make_environment
 from collect.generate.dataset.trajectron import (
-    TrajectronDataToLabel,
+    TrajectronSceneData,
+    # TrajectronDataToLabel,
     FrequencyModificationConfig,
 )
 
-DEFAULT_DIR = "out"
+pp = pprint.PrettyPrinter(indent=4)
+logger = logging.getLogger(__file__)
 
 
 def parse_arguments():
@@ -73,25 +74,33 @@ def parse_arguments():
     return argparser.parse_args()
 
 
-def main():
-    config = parse_arguments()
-    log_level = logging.DEBUG if config.debug else logging.INFO
-    logging.basicConfig(
-        format="%(asctime)s: %(levelname)s: %(message)s", level=log_level
-    )
+def main(config):
+    logging.info(f"Loading dataset {config.data_path}")
     with open(config.data_path, "rb") as f:
         env = dill.load(f, encoding="latin1")
-    fm_modification = FrequencyModificationConfig.from_file(config.modifier)
-    logging.info(f"Using config to set frequency mod: {fm_modification}.")
-    data_to_label = TrajectronDataToLabel(config)
-    counts = data_to_label.set_node_frequency_multiplier(env, fm_modification)
-    logging.info("Count of data types:")
-    pp.pprint(vars(counts))
-    savepath = re.sub(r"\.pkl$", "_modfm.pkl", config.data_path)
-    if not config.dry_run:
+
+    logger.info("Inspecting scene data.")
+    scene_data = TrajectronSceneData(env.scenes)
+    scene_data.log_node_count(filename="dataset_scene_histogram")
+
+    if config.dry_run:
+        logging.info("Done dry run.")
+    else:
+        fm_modification = FrequencyModificationConfig.from_file(config.modifier)
+        logging.info(f"Using config to set frequency mod: {fm_modification}.")
+        scene_data.set_node_fm(fm_modification)
+        savepath = re.sub(r"\.pkl$", "_modfm.pkl", config.data_path)
+        logging.info(f"Saving modified dataset {savepath}")
         with open(savepath, "wb") as f:
             dill.dump(env, f, protocol=dill.HIGHEST_PROTOCOL)
+        logging.info("Done.")
 
 
 if __name__ == "__main__":
-    main()
+    config = parse_arguments()
+    log_level = logging.DEBUG if config.debug else logging.INFO
+    logging.basicConfig(
+        format="%(asctime)s: %(name)s: %(levelname)s: %(message)s",
+        level=log_level
+    )
+    main(config)

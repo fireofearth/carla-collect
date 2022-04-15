@@ -1,10 +1,14 @@
+import os
 from abc import ABC, abstractmethod
+import logging
 
+import dill
+import shapely
 import networkx as nx
 import numpy as np
 import pandas as pd
-
 import carla
+
 import utility as util
 import carlautil
 import carlautil.debug
@@ -19,7 +23,9 @@ from .road import (
     RoadBoundaryConstraint
 )
 from ...visualize.trajectron import render_entire_map, render_map_crop
+from ... import CACHEDIR
 
+logger = logging.getLogger(__name__)
 CARLA_MAP_NAMES = ["Town01", "Town02", "Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
 
 class MapData(object):
@@ -193,6 +199,101 @@ class MapDataExtractor(object):
         return util.AttrDict(
                 controlled=controlled_junction_locations,
                 uncontrolled=uncontrolled_junction_locations)
+
+
+def vertex_set_to_smpoly(vertex_set):
+    polygons = []
+    for vertices in vertex_set:
+        polygons.append([vertices, []])
+    return shapely.geometry.MultiPolygon(polygons)
+
+
+def vertices_to_smpoly(vertices):
+    polygons = [[vertices, []]]
+    return shapely.geometry.MultiPolygon(polygons)
+
+
+class CachedMapData(object):
+    """Manages the persisting of map data from MapDataExtractor
+    to cache in a way that can be loaded for other purposes."""
+
+    TLIGHT_DETECT_RADIUS = 25.0
+
+    @staticmethod
+    def save_map_data_to_cache(client):
+        """Extract data from all maps through a CARLA client and save to disk. 
+
+        Parameters
+        ==========
+        client : carla.Client
+            Client to access live map data.
+        """
+        carla_world = client.get_world()
+        carla_map = carla_world.get_map()
+        for map_name in CARLA_MAP_NAMES:
+            logger.info(f"Caching map data from {map_name}.")
+            if carla_map.name != map_name:
+                carla_world = client.load_world(map_name)
+                carla_map = carla_world.get_map()
+            extractor = MapDataExtractor(carla_world, carla_map)
+            logger.info("    Extracting and caching road polygons and dividers")
+            p = extractor.extract_road_polygons_and_lines()
+            road_polygons, yellow_lines, white_lines = (
+                p.road_polygons,
+                p.yellow_lines,
+                p.white_lines,
+            )
+            logger.info("    Extracting and caching road junctions")
+            junctions = extractor.extract_junction_with_portals()
+            logger.info("    Extracting and caching spawn points")
+            spawn_points = extractor.extract_spawn_points()
+            payload = {
+                "road_polygons": road_polygons,
+                "yellow_lines": yellow_lines,
+                "white_lines": white_lines,
+                "junctions": junctions,
+                "spawn_points": spawn_points,
+            }
+            os.makedirs(CACHEDIR, exist_ok=True)
+            cachepath = f"{CACHEDIR}/map_data.{map_name}.pkl"
+            with open(cachepath, "wb") as f:
+                dill.dump(payload, f, protocol=dill.HIGHEST_PROTOCOL)
+        logger.info("Done.")
+
+    def __init__(self):
+        """Load map data from cache and collect shapes of all the intersections."""
+        self.map_datum = { }
+        # map to Shapely MultiPolygon for junction entrance/exits
+        self.map_to_smpolys = {}
+        # map to Shapely Circle covering junction region
+        self.map_to_scircles = {}
+        
+        logger.info("Retrieve map from cache.")
+        for map_name in CARLA_MAP_NAMES:
+            cachepath = f"{CACHEDIR}/map_data.{map_name}.pkl"
+            with open(cachepath, "rb") as f:
+                payload = dill.load(f, encoding="latin1")
+            self.map_datum[map_name] = util.AttrDict(
+                road_polygons=payload["road_polygons"],
+                white_lines=payload["white_lines"],
+                yellow_lines=payload["yellow_lines"],
+                junctions=payload["junctions"],
+            )
+
+        logger.info("Retrieving some data from map.")
+        for map_name in CARLA_MAP_NAMES:
+            for _junction in self.map_datum[map_name].junctions:
+                f = lambda x, y, yaw, l: util.vertices_from_bbox(
+                    np.array([x, y]), yaw, np.array([5.0, 0.95 * l])
+                )
+                vertex_set = util.map_to_ndarray(
+                    lambda wps: util.starmap(f, wps), _junction.waypoints
+                )
+                smpolys = util.map_to_list(vertex_set_to_smpoly, vertex_set)
+                util.setget_list_from_dict(self.map_to_smpolys, map_name).extend(smpolys)
+                x, y = _junction.pos
+                scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
+                util.setget_list_from_dict(self.map_to_scircles, map_name).append(scircle)
 
 
 class MapQuerier(ABC):

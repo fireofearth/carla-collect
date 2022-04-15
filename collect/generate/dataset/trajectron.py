@@ -1,5 +1,4 @@
 """This is for Trajectron data wrangling."""
-
 import os
 import json
 import logging
@@ -21,8 +20,10 @@ import matplotlib.patheffects as pe
 import carla
 import utility as util
 from ..label import carla_id_maker
-from ..map import MapDataExtractor
-from ... import CACHEDIR
+from ..map import CachedMapData
+from ... import CACHEDIR, OUTDIR
+
+logger = logging.getLogger(__name__)
 
 
 def node_to_df(node):
@@ -40,6 +41,18 @@ def scene_to_df(scene):
     return pd.concat(tmp_dfs)
 
 
+def scenes_to_df(scenes, use_world_position=False):
+    dfs = []
+    for scene in scenes:
+        df = scene_to_df(scene)
+        df["scene_id"] = scene.name
+        df['node_id'] = scene.name + '/' + df['node_id']
+        if use_world_position:
+            df[['position_x', 'position_y']] += np.array([scene.x_min, scene.y_min])
+        dfs.append(df)
+    return pd.concat(dfs)
+
+
 def vertex_set_to_smpoly(vertex_set):
     polygons = []
     for vertices in vertex_set:
@@ -53,6 +66,7 @@ def vertices_to_smpoly(vertices):
 
 
 def trajectory_curvature(t):
+    """Compute trajectory curvature based on Trajectron++ code."""
     path_distance = np.linalg.norm(t[-1] - t[0])
     lengths = np.sqrt(np.sum(np.diff(t, axis=0) ** 2, axis=1))  # Length between points
     path_length = np.sum(lengths)
@@ -61,25 +75,42 @@ def trajectory_curvature(t):
     return (path_length / path_distance) - 1, path_length, path_distance
 
 
+def max_curvature(X):
+    """Compute trajectory curvature based on cubic spline approx
+    and applying convolution to impove numerical stability."""
+    spline, _, distances = util.npu.interp_spline(X, normalize_interp=False, tol=0.1)
+    length = distances[-1]
+    s = np.linspace(0, length, 100)
+    ddspline = spline.derivative(2)
+    k = np.linalg.norm(ddspline(s), axis=1)
+    k_blur, _ = util.npu.apply_kernel_1d(k, util.npu.kernel_1d_gaussian, 5, 3)
+    k_max = np.max(k_blur)
+    return k_max
+
+
 class FrequencyModificationConfig(dict):
     """Values to set frequency modifier of scenes."""
 
     def __init__(
         self,
-        complete_intersection=4,
-        stopped_car=1,
-        at_intersection=2,
-        major_turn=18,
-        minor_turn=7,
-        other=1,
+        complete_intersection=1,
+        significant_at_intersection=1,
+        stopped_at_intersection=1,
+        other_at_intersection=1,
+        turn_at_other=1,
+        significant_at_other=1,
+        stopped_at_other=1,
+        other_at_other=1,
     ):
         super().__init__(
             complete_intersection=complete_intersection,
-            stopped_car=stopped_car,
-            at_intersection=at_intersection,
-            major_turn=major_turn,
-            minor_turn=minor_turn,
-            other=other,
+            significant_at_intersection=significant_at_intersection,
+            stopped_at_intersection=stopped_at_intersection,
+            other_at_intersection=other_at_intersection,
+            turn_at_other=turn_at_other,
+            significant_at_other=significant_at_other,
+            stopped_at_other=stopped_at_other,
+            other_at_other=other_at_other,
         )
         self.__dict__ = self
 
@@ -90,438 +121,376 @@ class FrequencyModificationConfig(dict):
         return cls(**config)
 
 
-class TrajectronDataToLabel(object):
+# Maps sets of node attributes to sets of mutually exclusive node/scene attributes
+NODEATTR_SCENEATTR_MAP = [
+    ### counts in intersection
+    ( ## mapping
+        # node attribute
+        ["is_complete_intersection"],
+        # scene attribute
+        ["complete_intersection"]
+    ),(
+        ["is_at_intersection", "is_significant_car"],
+        ["significant_at_intersection"]
+    ),(
+        ["is_at_intersection", "is_stopped_car"],
+        ["stopped_at_intersection"]
+    ),(
+        ["is_at_intersection"],
+        ["other_at_intersection"]
+    ),
+    ### counts outside of intersection (other)
+    (
+        ["is_major_turn", "is_significant_car"],
+        ["turn_at_other"]
+    ),(
+        ["is_minor_turn", "is_significant_car"],
+        ["turn_at_other"]
+    ),(
+        ["is_significant_car"],
+        ["significant_at_other"]
+    ),(
+        ["is_stopped_car"],
+        ["stopped_at_other"]
+    ),(
+        [],
+        ["other_at_other"]
+    )
+]
+
+# List of scene attributes
+SCENEATTRS = util.deduplicate(
+    util.merge_list_of_list(util.map_to_list(util.second, NODEATTR_SCENEATTR_MAP))
+)
+
+class TrajectronSceneData(object):
+    """Trajectron++ scene data manager used to generate a dataset."""
+    
     # Directory of cache
     MAP_NAMES = ["Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
     # radius used to check whether vehicle is in junction
     TLIGHT_DETECT_RADIUS = 25.0
     STOPPED_CAR_TOL = 1.0
+    COUNTS_TEMPLATE = util.AttrDict(all=0, **{attr: 0 for attr in SCENEATTRS})
 
-    def __init__(self, config):
-        self.config = config
-        self.map_datum = { }
-        for map_name in self.MAP_NAMES:
-            cachepath = f"{CACHEDIR}/map_data.{map_name}.pkl"
-            with open(cachepath, "rb") as f:
-                payload = dill.load(f, encoding="latin1")
-            self.map_datum[map_name] = util.AttrDict(
-                road_polygons=payload["road_polygons"],
-                white_lines=payload["white_lines"],
-                yellow_lines=payload["yellow_lines"],
-                junctions=payload["junctions"],
-            )
-
-    def set_node_frequency_multiplier(self, env, fm_modification):
-        """Mutates environment by setting the frequency modifier of scenes."""
-
-        n_nodes = 0
-        # map to scene+node ID to node in scene
-        maps_ids_nodes_dict = {}
-        # map to scene+node ID to node Shapely LineString
-        ids_sls_dict = {}
-        logging.info("Getting trajectories of vehicles from every scene.")
-        for scene in tqdm(env.scenes):
+    def __construct_mappings_from_node(self):
+        """Contstruct mappings from node."""
+        # n_nodes : int
+        #    Number of nodes.
+        self.n_nodes = 0
+        # nodeid_scene_dict : dict of (str, Scene)
+        #    scene+node ID => scene the node is in
+        self.nodeid_scene_dict = {}
+        # sceneid_scene_dict : dict of (str, Scene)
+        #    scene ID => scene
+        self.sceneid_scene_dict = {}
+        # sceneid_count_dict : dict of (str, util.AttrDict)
+        #    scene ID => scene counts
+        self.sceneid_count_dict = {}
+        # map_nodeids_dict : dict of (str, list of str)
+        #    map to scene+node ID => node
+        self.map_nodeids_dict = {}
+        # nodeid_node_dict : dict of (str, Node)
+        #    node ID => node
+        self.nodeid_node_dict = {}
+        # nodeid_sls_dict : dict of (str, shapely.geometry.LineString)
+        #    scene+node ID to node Shapely LineString
+        self.nodeid_sls_dict = {}
+        logger.info("Getting trajectories of vehicles from every scene.")
+        for scene in tqdm(self.scenes):
+            pos_adjust = np.array([scene.x_min, scene.y_min])
+            map_name = carla_id_maker.extract_value(scene.name, "map")
+            self.sceneid_count_dict[scene.name] = self.COUNTS_TEMPLATE.copy()
+            self.sceneid_count_dict[scene.name].scene_id = scene.name
+            self.sceneid_scene_dict[scene.name] = scene
             for node in scene.nodes:
-                map_name = carla_id_maker.extract_value(scene.name, "map")
-                scene_node_id = scene.name + "/" + node.id
-                util.setget_dict_from_dict(maps_ids_nodes_dict, map_name)[
-                    scene_node_id
-                ] = node
+                nodeid = scene.name + "/" + node.id
+                self.nodeid_scene_dict[nodeid] = scene
+                self.nodeid_node_dict[nodeid] = node
+                util.setget_list_from_dict(
+                    self.map_nodeids_dict, map_name
+                ).append(nodeid)
                 node_df = node_to_df(node)
-                pos = node_df[["position_x", "position_y"]].values.copy()
-                pos += np.array([scene.x_min, scene.y_min])
+                pos = node_df[["position_x", "position_y"]].values + pos_adjust
                 sls = shapely.geometry.LineString(pos)
-                ids_sls_dict[scene_node_id] = sls
-                n_nodes += 1
-
-        # collect shapes of all the intersections
-        # map to Shapely MultiPolygon for junction entrance/exits
-        map_to_smpolys = {}
-        # map to Shapely Circle covering junction region
-        map_to_scircles = {}
-        logging.info("Retrieving some data from map.")
-        for map_name in self.MAP_NAMES:
-            for _junction in self.map_datum[map_name].junctions:
-                f = lambda x, y, yaw, l: util.vertices_from_bbox(
-                    np.array([x, y]), yaw, np.array([5.0, 0.95 * l])
-                )
-                vertex_set = util.map_to_ndarray(
-                    lambda wps: util.starmap(f, wps), _junction.waypoints
-                )
-                smpolys = util.map_to_list(vertex_set_to_smpoly, vertex_set)
-                util.setget_list_from_dict(map_to_smpolys, map_name).extend(smpolys)
-                x, y = _junction.pos
-                scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
-                util.setget_list_from_dict(map_to_scircles, map_name).append(scircle)
-
-        logging.info("Labelling node data.")
-        counts = util.AttrDict(
-            at_intersection=0,
-            stopped_car=0,
-            complete_intersection=0,
-            major_turn=0,
-            minor_turn=0,
-            all=0,
-            other=0,
+                self.nodeid_sls_dict[nodeid] = sls
+                self.n_nodes += 1
+    
+    def __inspect_intersection_completedness(self, map_name, nodeid):
+        """Whether a car completed an intersection
+        (trajectory enters and exits the intersection)
+        by checking containment twice."""
+        sls = self.nodeid_sls_dict[nodeid]
+        for smpoly in self.cached_map_data.map_to_smpolys[map_name]:
+            spoly_enter = util.select(smpoly.geoms, 0)
+            spoly_exit  = util.select(smpoly.geoms, 1)
+            res = sls.intersection(spoly_enter)
+            if not res.is_empty:
+                res = sls.intersection(spoly_exit)
+                if not res.is_empty:
+                    return True
+        return False
+    
+    def __inspect_intersectedness(self, map_name, nodeid):
+        """Whether a car is in the intersection,
+        and what its behavior is in it
+        by checking intersection."""
+        sls = self.nodeid_sls_dict[nodeid]
+        for scircle in self.cached_map_data.map_to_scircles[map_name]:
+            res = sls.intersection(scircle)
+            if not res.is_empty:
+                return True
+        return False
+    
+    def __inspect_distance(self, map_name, nodeid):
+        """Whether a car is moving significantly
+        (at least 10m and 10 steps) by checking line properties."""
+        is_significant_car = False
+        is_stopped_car = False
+        sls = self.nodeid_sls_dict[nodeid]
+        S = len(sls.coords)
+        L = sls.length
+        if S >= 10 and L >= 10.0:
+            is_significant_car = True
+        elif L < self.STOPPED_CAR_TOL:
+            is_stopped_car = True
+        return (
+            is_significant_car,
+            is_stopped_car
         )
-        
-        with tqdm(total=n_nodes) as pbar:
-            for map_name, ids_nodes_dict in maps_ids_nodes_dict.items():
-                for scene_node_id, node in ids_nodes_dict.items():
-                    is_at_intersection = False
-                    is_stopped_car = False
-                    # vehicle completely crossed intersection
-                    # (trajectory enters and exits the intersection)
-                    is_complete_intersection = False
-                    is_major_turn = False
-                    is_minor_turn = False
-
-                    sls = ids_sls_dict[scene_node_id]
-                    for smpoly in map_to_smpolys[map_name]:
-                        spoly_enter = util.select(smpoly.geoms, 0)
-                        spoly_exit = util.select(smpoly.geoms, 1)
-                        res = sls.intersection(spoly_enter)
-                        if not res.is_empty:
-                            res = sls.intersection(spoly_exit)
-                            if not res.is_empty:
-                                is_complete_intersection = True
-                                break
-
-                    for scircle in map_to_scircles[map_name]:
-                        res = sls.intersection(scircle)
-                        if not res.is_empty:
-                            is_at_intersection = True
-                            break
-
-                    if sls.length < self.STOPPED_CAR_TOL:
-                        is_stopped_car = True
-                    else:
-                        curvature, _, _ = trajectory_curvature(np.array(sls.coords))
-                        if curvature > 0.1:
-                            is_major_turn = True
-                        if curvature > 0.01:
-                            is_minor_turn = True
-
-                    counts.all += 1
-                    if is_complete_intersection:
-                        counts.complete_intersection += 1
-                        node.frequency_multiplier = (
-                            fm_modification.complete_intersection
-                        )
-                    elif is_stopped_car:
-                        counts.stopped_car += 1
-                        node.frequency_multiplier = fm_modification.stopped_car
-                    elif is_at_intersection:
-                        counts.at_intersection += 1
-                        node.frequency_multiplier = fm_modification.at_intersection
-                    elif is_major_turn:
-                        counts.major_turn += 1
-                        node.frequency_multiplier = fm_modification.major_turn
-                    elif is_minor_turn:
-                        counts.minor_turn += 1
-                        node.frequency_multiplier = fm_modification.minor_turn
-                    else:
-                        counts.other += 1
-                        node.frequency_multiplier = fm_modification.other
-
-                    pbar.update(1)
-
-        return counts
-
-
-class TrajectronTown03DataToLabel(object):
-    """Trajectron++ data extracted from Town03 ONLY to label."""
-
-    # Directory of cache
-    CACHEDIR = "cache"
-    # radius used to check whether vehicle is in junction
-    TLIGHT_DETECT_RADIUS = 25.0
-    STOPPED_CAR_TOL = 1.0
-
-    def __extract_data(self):
-        client = carla.Client(self.config.host, self.config.port)
-        client.set_timeout(10.0)
-        carla_world = client.get_world()
-        carla_map = carla_world.get_map()
-        if carla_map.name != "Town03":
-            raise Exception("Currently only able to extract map data from Town03")
-        extractor = MapDataExtractor(carla_world, carla_map)
-        p = extractor.extract_road_polygons_and_lines()
-        road_polygons, yellow_lines, white_lines = (
-            p.road_polygons,
-            p.yellow_lines,
-            p.white_lines,
-        )
-        junctions = extractor.extract_junction_with_portals()
-        payload = {
-            "road_polygons": road_polygons,
-            "yellow_lines": yellow_lines,
-            "white_lines": white_lines,
-            "junctions": junctions,
-        }
-        os.makedirs(self.CACHEDIR, exist_ok=True)
-        with open(self.cachepath, "wb") as f:
-            dill.dump(payload, f, protocol=dill.HIGHEST_PROTOCOL)
-        return payload
-
-    def __init__(self, config):
-        self.config = config
-        self.cachepath = f"{self.CACHEDIR}/map_data.Town03.pkl"
-        self.map_name = "Town03"
-
+    
+    def __inspect_curvature(self, map_name, nodeid):
+        """Inspect curvature of trajectory.
+        A major turn has curvature over 0.1.
+        A minor turn has curvature between 0.01, 0.1.
+        """
+        is_major_turn = False
+        is_minor_turn = False
+        sls = self.nodeid_sls_dict[nodeid]
+        X = np.array(sls.coords)
         try:
-            with open(self.cachepath, "rb") as f:
-                payload = dill.load(f, encoding="latin1")
-            _, _, _, _ = (
-                payload["road_polygons"],
-                payload["white_lines"],
-                payload["yellow_lines"],
-                payload["junctions"],
-            )
-        except Exception as e:
-            logging.warning(e)
-            logging.info("Extracting map data from CARLA Simulator")
-            payload = self.__extract_data()
-        self.road_polygons = payload["road_polygons"]
-        self.white_lines = payload["white_lines"]
-        self.yellow_lines = payload["yellow_lines"]
-        self.junctions = payload["junctions"]
-
-        if config.debug:
-            self.__display_map()
-
-    def __display_map(self):
-        # Plot all the junctions and entrance/exits to/from the junctions
-        fig, ax = plt.subplots(figsize=(20, 20))
-
-        for poly in self.road_polygons:
-            patch = patches.Polygon(poly[:, :2], fill=True, color="grey")
-            ax.add_patch(patch)
-        for line in self.yellow_lines:
-            ax.plot(line.T[0], line.T[1], c="yellow", linewidth=2)
-        for line in self.white_lines:
-            ax.plot(line.T[0], line.T[1], c="white", linewidth=2)
-
-        for idx, junction in enumerate(self.junctions):
-            x, y = junction["pos"]
-            ax.plot(x, y, "ro", markersize=10)
-            ax.text(x + 5, y - 5, str(idx), color="r", size=20)
-            circ = patches.Circle(
-                (
-                    x,
-                    y,
-                ),
-                radius=25,
-                color="g",
-                fc="none",
-            )
-            ax.add_patch(circ)
-            for _wp1, _wp2 in junction["waypoints"]:
-                # entrances
-                x, y, yaw, lane_width = _wp1
-                lw = np.array([5.0, lane_width])
-                bbox = util.vertices_from_bbox(np.array([x, y]), yaw, lw)
-                bb = patches.Polygon(bbox, closed=True, color="b", fc="none")
-                ax.add_patch(bb)
-                # exits
-                x, y, yaw, lane_width = _wp2
-                lw = np.array([5.0, lane_width])
-                bbox = util.vertices_from_bbox(np.array([x, y]), yaw, lw)
-                bb = patches.Polygon(bbox, closed=True, color="r", fc="none")
-                ax.add_patch(bb)
-
-        ax.set_xlabel("x")
-        ax.set_ylabel("y")
-        ax.set_aspect("equal")
-        ax.set_facecolor("black")
-        fig.tight_layout()
-        plt.show()
-
-    def hardcode_set_node_frequency_multiplier(self, env):
-        """
-        Mutates environment
-
-        TODO: hardcoded. Figure out a way to do this in more flexible way?
-        """
-        # fm_modification = util.AttrDict(
-        #         complete_intersection=3,
-        #         stopped_car = 1,
-        #         at_intersection=2,
-        #         major_turn=25,
-        #         minor_turn=10,
-        #         other=2)
-        fm_modification = util.AttrDict(
-            complete_intersection=4,
-            stopped_car=1,
-            at_intersection=2,
-            major_turn=18,
-            minor_turn=7,
-            other=1,
+            k_max = max_curvature(X)
+            if k_max >= 0.1:
+                is_major_turn = True
+            elif k_max >= 0.01:
+                is_minor_turn = True
+        except ValueError:
+            pass
+        return (
+            is_major_turn,
+            is_minor_turn
         )
-
-        # scene+node ID to node in scene
-        id_to_node = {}
-        # scene+node ID to node Shapely LineString
-        id_to_node_sls = {}
-        logging.info("Getting trajectories of vehicles from every scene.")
-        for scene in tqdm(env.scenes):
-            for node in scene.nodes:
-                scene_node_id = scene.name + "/" + node.id
-                id_to_node[scene_node_id] = node
-                node_df = node_to_df(node)
-                pos = node_df[["position_x", "position_y"]].values.copy()
-                pos += np.array([scene.x_min, scene.y_min])
-                sls = shapely.geometry.LineString(pos)
-                id_to_node_sls[scene_node_id] = sls
-
-        # collect shapes of all the intersections
-        smpolys = []
-        scircles = []
-        for _junction in self.junctions:
-            f = lambda x, y, yaw, l: util.vertices_from_bbox(
-                np.array([x, y]), yaw, np.array([5.0, 0.95 * l])
-            )
-            vertex_set = util.map_to_ndarray(
-                lambda wps: util.starmap(f, wps), _junction.waypoints
-            )
-            smpolys += util.map_to_list(vertex_set_to_smpoly, vertex_set)
-            x, y = _junction.pos
-            scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
-            scircles.append(scircle)
-
-        logging.info("Labelling node data.")
-        counts = util.AttrDict(
-            at_intersection=0,
-            stopped_car=0,
-            complete_intersection=0,
-            major_turn=0,
-            minor_turn=0,
-            all=0,
-            other=0,
+    
+    def __inspect_node(self, map_name, nodeid):
+        """Label the given node by inspecting the node's properties."""
+        (
+            is_complete_intersection
+        ) = self.__inspect_intersection_completedness(map_name, nodeid)
+        (
+            is_at_intersection
+        ) = self.__inspect_intersectedness(map_name, nodeid)
+        (
+            is_significant_car,
+            is_stopped_car
+        ) = self.__inspect_distance(map_name, nodeid)
+        (
+            is_major_turn,
+            is_minor_turn
+        ) = self.__inspect_curvature(map_name, nodeid)
+        return util.AttrDict(
+            node_id=nodeid,
+            is_complete_intersection=is_complete_intersection,
+            is_at_intersection=is_at_intersection,
+            is_significant_car=is_significant_car,
+            is_stopped_car=is_stopped_car,
+            is_major_turn=is_major_turn,
+            is_minor_turn=is_minor_turn
         )
-        for scene_node_id, node in tqdm(id_to_node.items()):
-            is_at_intersection = False
-            is_stopped_car = False
-            # vehicle completely crossed intersection (trajectory enters and exits the intersection)
-            is_complete_intersection = False
-            is_major_turn = False
-            is_minor_turn = False
+    
+    def __inspect_nodes(self):
+        """Inspect each node and gather node attributes."""
+        logger.info("Inspecting node data.")
+        nodeattrs = []
+        with tqdm(total=self.n_nodes) as pbar:
+            for map_name, nodeids in self.map_nodeids_dict.items():
+                for nodeid in nodeids:
+                    nodeattr = self.__inspect_node(map_name, nodeid)
+                    nodeattrs.append(nodeattr)
+                    pbar.update(1)
+        return nodeattrs
+    
+    def __count_node(self, nodeattr):
+        """Update count of a scene given a node."""
+        nodeid = nodeattr.node_id
+        counts = self.sceneid_count_dict[self.nodeid_scene_dict[nodeid].name]
+        for _counts in [counts, self.total_counts]:
+            _counts.all += 1
+            for _nodeattrnames, _sceneattrnames in NODEATTR_SCENEATTR_MAP:
+                if all([nodeattr[_nodeattrname] for _nodeattrname in _nodeattrnames]):
+                    for _sceneattrname in _sceneattrnames:
+                        _counts[_sceneattrname] += 1
+                    break
+    
+    def __count_nodes(self, nodeattrs):
+        """Count nodes in each scene."""
+        logger.info("Counting node data.")
+        self.total_counts = self.COUNTS_TEMPLATE.copy()
+        self.nodeattr_df = pd.DataFrame.from_records(nodeattrs)
+        for i, nodeattr in self.nodeattr_df.iterrows():
+            self.__count_node(nodeattr)
+        # sceneattr_count_df : DataFrame
+        #   Each row is the count of nodes in the scene.
+        self.scene_count_df = pd.DataFrame.from_records(iter(self.sceneid_count_dict.values()))
+    
+    def __extract_data(self):
+        """Extracting scene data."""
+        logger.info("Extracting scene data.")
+        self.__construct_mappings_from_node()
+        nodeattrs = self.__inspect_nodes()
+        self.__count_nodes(nodeattrs)
+                
+    def __init__(self, scenes):
+        self.scenes = scenes
+        self.cached_map_data = CachedMapData()
+        self.__extract_data()
 
-            sls = id_to_node_sls[scene_node_id]
-            for smpoly in smpolys:
-                spoly_enter = util.select(smpoly.geoms, 0)
-                spoly_exit = util.select(smpoly.geoms, 1)
-                res = sls.intersection(spoly_enter)
-                if not res.is_empty:
-                    res = sls.intersection(spoly_exit)
-                    if not res.is_empty:
-                        is_complete_intersection = True
-                        break
+    def inspect_node(self, scene, node):
+        map_name = carla_id_maker.extract_value(scene.name, "map")
+        nodeid = scene.name + "/" + node.id
+        nodeattr = self.__inspect_node(map_name, nodeid)
+        
+        for _nodeattrnames, _sceneattrnames in NODEATTR_SCENEATTR_MAP:
+            if all([nodeattr[_nodeattrname] for _nodeattrname in _nodeattrnames]):
+                nodeattr.classification = _sceneattrnames.copy()
+                break
+        return nodeattr
 
-            for scircle in scircles:
-                res = sls.intersection(scircle)
-                if not res.is_empty:
-                    is_at_intersection = True
+    def set_node_fm(self, fm_modification: FrequencyModificationConfig):
+        """Set node frequency multiplier."""
+        for i, nodeattr in self.nodeattr_df.iterrows():
+            nodeid = nodeattr.node_id
+            node = self.nodeid_node_dict[nodeid]
+            
+            for _nodeattrnames, _sceneattrnames in NODEATTR_SCENEATTR_MAP:
+                if all([nodeattr[_nodeattrname] for _nodeattrname in _nodeattrnames]):
+                    for _sceneattrname in _sceneattrnames:
+                        node.frequency_multiplier = (
+                            fm_modification[_sceneattrname]
+                        )
                     break
 
-            if sls.length < self.STOPPED_CAR_TOL:
-                is_stopped_car = True
-            else:
-                curvature, _, _ = trajectory_curvature(np.array(sls.coords))
-                if curvature > 0.1:
-                    is_major_turn = True
-                if curvature > 0.01:
-                    is_minor_turn = True
-
-            counts.all += 1
-            if is_complete_intersection:
-                counts.complete_intersection += 1
-                node.frequency_multiplier = fm_modification.complete_intersection
-            elif is_stopped_car:
-                counts.stopped_car += 1
-                node.frequency_multiplier = fm_modification.stopped_car
-            elif is_at_intersection:
-                counts.at_intersection += 1
-                node.frequency_multiplier = fm_modification.at_intersection
-            elif is_major_turn:
-                counts.major_turn += 1
-                node.frequency_multiplier = fm_modification.major_turn
-            elif is_minor_turn:
-                counts.minor_turn += 1
-                node.frequency_multiplier = fm_modification.minor_turn
-            else:
-                counts.other += 1
-                node.frequency_multiplier = fm_modification.other
-
-            # Do independently tally
-            # if is_complete_intersection:
-            #     counts.complete_intersection += 1
-            # if is_stopped_car:
-            #     counts.stopped_car += 1
-            # if is_at_intersection:
-            #     counts.at_intersection += 1
-            # if is_major_turn:
-            #     counts.major_turn += 1
-            # if is_minor_turn:
-            #     counts.minor_turn += 1
-
-        return counts
-
-    def classify_label_to_scene_ids(self, sample_dict):
-        """
-        TODO: not being used
+    def sample_scenes(self, n_samples, scene_ids=None):
+        """Weighted sampling of scene IDs without replacement.
+        If sampling more than the number of IDs available, then just return all IDs.
+        
+        Currently samples scenes with significan number of nodes classified as:
+        
+        - complete_intersection
+        - significant_at_intersection
+        - turn_at_other
+        - significant_at_other
 
         Parameters
         ==========
-        sample_dict : dict of (str: Scene)
-            Mapping of scene ID and the scene itself.
+        n_samples : int
+            Number of scenes to sample from.
+        scene_ids : list of str
+            Selected scene IDs to sample from. If not provided then just sample
+            from all scene IDs provided at initialization.
 
         Returns
         =======
         list of str
-            The filtered scene IDs.
+            The sampled scenes IDs.
         """
-        scene_id_to_ego_sls = {}
-        logging.info("Getting trajectories of ego vehicles from every scene.")
-        for scene_id, scene in tqdm(sample_dict.items()):
-            scene_df = scene_to_df(scene)
-            node_df = scene_df[scene_df["node_id"] == "ego"]
-            pos = node_df[["position_x", "position_y"]].values
-            sls = shapely.geometry.LineString(pos)
-            scene_id_to_ego_sls[scene_id] = sls
+        if scene_ids is None:
+            scene_count_df = self.scene_count_df
+        else:
+            sceneid_count_dict = util.subdict(self.sceneid_count_dict, scene_ids)
+            scene_count_df = pd.DataFrame.from_records(iter(sceneid_count_dict.values()))
+        if n_samples >= len(scene_count_df):
+            return list(scene_count_df["scene_id"])
 
-        # collect shapes of all the intersections
-        smpolys = []
-        scircles = []
-        for _junction in self.junctions:
-            f = lambda x, y, yaw, l: util.vertices_from_bbox(
-                np.array([x, y]), yaw, np.array([5.0, 0.95 * l])
-            )
-            vertex_set = util.map_to_ndarray(
-                lambda wps: util.starmap(f, wps), _junction["waypoints"]
-            )
-            smpolys += util.map_to_list(vertex_set_to_smpoly, vertex_set)
-            x, y = _junction["pos"]
-            scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
-            scircles.append(scircle)
+        mask = np.logical_or.reduce([
+            scene_count_df["complete_intersection"] > 4,
+            scene_count_df["significant_at_intersection"] > 4,
+            scene_count_df["turn_at_other"] > 4,
+            scene_count_df["significant_at_other"] > 4,
+        ])
+        n = len(scene_count_df)
+        n1 = np.sum(mask)
+        n2 = n - n1
+        a1 = 9 * n2 / n1
+        logger.info(
+            f"total scenes n={n}, prioritized scenes n1={n1}, deprioritized scenes n2={n2}."
+        )
+        logger.info(
+            f"multiplier a1={a1}, expected proportion of selected {a1*n1 / (a1*n1 + n2)}."
+        )
+        scene_count_df.loc[mask, "weight"] = a1
+        scene_count_df.loc[~mask, "weight"] = 1
+        sample_df = scene_count_df.sample(n_samples, replace=False, weights="weight")
+        return list(sample_df["scene_id"])
+                    
+    def log_node_count(self, filename="scene_histogram"):
+        """Log total node counts, and save a histogram plot of node counts in scenes."""
+        logger.info("node mutually-exclusive labels:")
+        labels = ", ".join(self.scene_count_df.columns)
+        logger.info(labels)
+        logger.info("")
+        logger.info("total node count:")
+        n_all = self.total_counts.all
+        for x in self.total_counts.items():
+            logger.info(f"{x[0]}: {x[1]}, frac. {round(x[1] / n_all, 2)}")
 
-        label_to_scene_ids = {"is_at_intersecion": [], "other": []}
-        for scene_id, sls in tqdm(scene_id_to_ego_sls.items()):
-            is_at_intersection = False
-            is_stopped_car = False
+        hist_attrs = util.AttrDict(bins=30, range=(0, 30))
+        fig = plt.figure(figsize=(15, 15))
 
-            for scircle in scircles:
-                res = sls.intersection(scircle)
-                if not res.is_empty:
-                    is_at_intersection = True
-                    break
+        ax = fig.add_subplot(421)
+        selector = "complete_intersection"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
 
-            if sls.length < self.STOPPED_CAR_TOL:
-                is_stopped_car = True
+        ax = fig.add_subplot(422)
+        selector = "significant_at_intersection"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
 
-            if is_at_intersection:
-                label_to_scene_ids["is_at_intersecion"].append(scene_id)
-            else:
-                label_to_scene_ids["other"].append(scene_id)
+        ax = fig.add_subplot(423)
+        selector = "stopped_at_intersection"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
 
-        return label_to_scene_ids
+        ax = fig.add_subplot(424)
+        selector = "other_at_intersection"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
+
+        ax = fig.add_subplot(425)
+        selector = "turn_at_other"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
+
+        ax = fig.add_subplot(426)
+        selector = "significant_at_other"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
+
+        ax = fig.add_subplot(427)
+        selector = "stopped_at_other"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
+
+        ax = fig.add_subplot(428)
+        selector = "other_at_other"
+        self.scene_count_df[selector].hist(ax=ax, **hist_attrs)
+        ax.set_title(selector)
+
+        for ax in fig.get_axes():
+            ax.set_xlabel("Count of nodes per scene")
+            ax.set_ylabel("Number of scenes")
+        fig.suptitle("Histogram of node occurance in scenes")
+        fig.tight_layout()
+        fig.savefig(os.path.join(OUTDIR, f"{filename}.png"))
+        plt.close(fig)
+

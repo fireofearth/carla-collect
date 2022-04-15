@@ -1,6 +1,5 @@
-"""This is for 
+"""Dataset group, resampling, and validation split module.
 """
-
 import os
 import json
 import logging
@@ -10,6 +9,8 @@ import numpy as np
 
 import utility as util
 from ..label import carla_id_maker
+
+logger = logging.getLogger(__name__)
 
 class CrossValidationSplitCreator(object):
 
@@ -61,7 +62,6 @@ class SampleGroupCreator(object):
         self.n_groups = config.n_groups
         # filter_inclusive_labels : dict of (str: list)
         #   Word to check and list of values to filter in.
-        
         self.filter_inclusive_labels = getattr(
                 config, 'filter_inclusive_labels', None)
 
@@ -101,6 +101,6 @@ class SampleGroupCreator(object):
         
         util.shuffle_nested_dict_of_list(groups)
         for idx, group in groups.items():
-            logging.info(f"group {idx} has {len(group)} samples.")
+            logger.info(f"group {idx} has {len(group)} samples.")
 
         return groups
