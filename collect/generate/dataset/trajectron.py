@@ -1,9 +1,11 @@
-"""This is for Trajectron data wrangling."""
+"""Module for generating and inspecting Trajectron++ specific datasets."""
+
+# Built-in libraries
 import os
 import json
 import logging
-import glob
 
+# PyPI libraries
 import dill
 from tqdm import tqdm
 import numpy as np
@@ -17,8 +19,11 @@ import matplotlib.ticker as ticker
 import matplotlib.colors as colors
 import matplotlib.patheffects as pe
 
+# Local libararies
 import carla
 import utility as util
+
+# Modules
 from ..label import carla_id_maker
 from ..map import CachedMapData
 from ... import CACHEDIR, OUTDIR
@@ -27,11 +32,13 @@ logger = logging.getLogger(__name__)
 
 
 def node_to_df(node):
+    """Trajectron++ node to data frame."""
     columns = ["_".join(t) for t in node.data.header]
     return pd.DataFrame(node.data.data, columns=columns)
 
 
 def scene_to_df(scene):
+    """Trajectron++ scene to data frame."""
     dfs = [node_to_df(node) for node in scene.nodes if repr(node.type) == "VEHICLE"]
     tmp_dfs = []
     for node, df in zip(scene.nodes, dfs):
@@ -42,6 +49,7 @@ def scene_to_df(scene):
 
 
 def scenes_to_df(scenes, use_world_position=False):
+    """Combine Trajectron++ scenes to a single data frame."""
     dfs = []
     for scene in scenes:
         df = scene_to_df(scene)
@@ -93,14 +101,14 @@ class FrequencyModificationConfig(dict):
 
     def __init__(
         self,
-        complete_intersection=1,
-        significant_at_intersection=1,
-        stopped_at_intersection=1,
-        other_at_intersection=1,
-        turn_at_other=1,
-        significant_at_other=1,
-        stopped_at_other=1,
-        other_at_other=1,
+        complete_intersection : int=1,
+        significant_at_intersection : int=1,
+        stopped_at_intersection : int=1,
+        other_at_intersection : int=1,
+        turn_at_other : int=1,
+        significant_at_other : int=1,
+        stopped_at_other : int=1,
+        other_at_other : int=1,
     ):
         super().__init__(
             complete_intersection=complete_intersection,
@@ -116,6 +124,7 @@ class FrequencyModificationConfig(dict):
 
     @classmethod
     def from_file(cls, config_path):
+        """Read a frequency modifier from JSON file."""
         with open(config_path, "r") as f:
             config = json.load(f)
         return cls(**config)
@@ -164,37 +173,49 @@ SCENEATTRS = util.deduplicate(
 )
 
 class TrajectronSceneData(object):
-    """Trajectron++ scene data manager used to generate a dataset."""
+    """Trajectron++ scene data. Used to inspect data, count samples in the dataset,
+    and reweight samples when generating a dataset.
     
-    # Directory of cache
-    MAP_NAMES = ["Town03", "Town04", "Town05", "Town06", "Town07", "Town10HD"]
-    # radius used to check whether vehicle is in junction
-    TLIGHT_DETECT_RADIUS = 25.0
+    Attributes
+    ==========
+    n_nodes : int
+        Number of nodes.
+    nodeid_scene_dict : dict of (str, Scene)
+        scene+node ID => scene the node is in
+    sceneid_scene_dict : dict of (str, Scene)
+        scene ID => scene
+    sceneid_count_dict : dict of (str, util.AttrDict)
+        scene ID => scene counts
+    map_nodeids_dict : dict of (str, list of str)
+        map to scene+node ID => node
+    nodeid_node_dict : dict of (str, Node)
+        node ID => node
+    nodeid_sls_dict : dict of (str, shapely.geometry.LineString)
+        scene+node ID to node Shapely LineString
+    total_counts : util.AttrDict
+        total counts of nodes across the dataset.
+    nodeattr_df : DataFrame
+        data frame of node attributes.
+    sceneattr_count_df : DataFrame
+        Each row is the count of nodes in the scene.
+    scene_count_df : DataFrame
+        Breakdown of nodes per scene.
+    scenes : list of Scene
+        List of scenes in dataset.
+    cached_map_data : CachedMapData
+        Cached map data for querying.
+    """
     STOPPED_CAR_TOL = 1.0
     COUNTS_TEMPLATE = util.AttrDict(all=0, **{attr: 0 for attr in SCENEATTRS})
 
     def __construct_mappings_from_node(self):
         """Contstruct mappings from node."""
-        # n_nodes : int
-        #    Number of nodes.
         self.n_nodes = 0
-        # nodeid_scene_dict : dict of (str, Scene)
-        #    scene+node ID => scene the node is in
         self.nodeid_scene_dict = {}
-        # sceneid_scene_dict : dict of (str, Scene)
-        #    scene ID => scene
         self.sceneid_scene_dict = {}
-        # sceneid_count_dict : dict of (str, util.AttrDict)
-        #    scene ID => scene counts
         self.sceneid_count_dict = {}
-        # map_nodeids_dict : dict of (str, list of str)
-        #    map to scene+node ID => node
         self.map_nodeids_dict = {}
-        # nodeid_node_dict : dict of (str, Node)
-        #    node ID => node
         self.nodeid_node_dict = {}
-        # nodeid_sls_dict : dict of (str, shapely.geometry.LineString)
-        #    scene+node ID to node Shapely LineString
         self.nodeid_sls_dict = {}
         logger.info("Getting trajectories of vehicles from every scene.")
         for scene in tqdm(self.scenes):
@@ -355,6 +376,20 @@ class TrajectronSceneData(object):
         self.__extract_data()
 
     def inspect_node(self, scene, node):
+        """Inspect attribute from node.
+
+        Parameters
+        ==========
+        node : Node
+            Node to inspect.
+        scene : Scene
+            Scene the node belongs to.
+
+        Returns
+        =======
+        util.AttrDict
+            The node attributes.
+        """
         map_name = carla_id_maker.extract_value(scene.name, "map")
         nodeid = scene.name + "/" + node.id
         nodeattr = self.__inspect_node(map_name, nodeid)

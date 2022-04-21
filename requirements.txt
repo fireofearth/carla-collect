@@ -1,11 +1,15 @@
-black
 pyyaml
 psutil
 more-itertools
-pygame
 docplex
 slycot
 control
-ipywidgets
 networkx
 # carla==0.9.13
+
+# documentation and testing
+ipywidgets
+pygame
+black
+sphinx
+myst-parser

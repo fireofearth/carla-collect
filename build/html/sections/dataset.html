@@ -1,0 +1,423 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Dataset submodule &#8212; CARLA Collect 2022 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="Generate submodule" href="generate.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-collect.generate.dataset">
+<span id="dataset-submodule"></span><h1>Dataset submodule<a class="headerlink" href="#module-collect.generate.dataset" title="Permalink to this headline">¶</a></h1>
+<p>Module constructing generic datasets no specific to any model architecture.
+Does dataset grouping, shuffling, and constructs validation split.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.dataset.CrossValidationSplitCreator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.</span></span><span class="sig-name descname"><span class="pre">CrossValidationSplitCreator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.CrossValidationSplitCreator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make cross validation splits from groups.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.CrossValidationSplitCreator.make_splits">
+<span class="sig-name descname"><span class="pre">make_splits</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">groups</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.CrossValidationSplitCreator.make_splits" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make cross validation splits from groups.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>groups</strong> (<em>dict of int:</em><em> (</em><em>list of str</em><em>)</em>) – Groups of sample IDs.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>list of (dict of (int</strong> – The splits. The splits are shuffled.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>list of str))</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.dataset.SampleGroupCreator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.</span></span><span class="sig-name descname"><span class="pre">SampleGroupCreator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.SampleGroupCreator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make groups from samples.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.SampleGroupCreator.make_groups">
+<span class="sig-name descname"><span class="pre">make_groups</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sample_ids</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.SampleGroupCreator.make_groups" title="Permalink to this definition">¶</a></dt>
+<dd><p>Make groups like so:</p>
+<ol class="arabic simple">
+<li><p>agent in an episode is not represented in more than one group.</p></li>
+<li><p>maps are represented evenly across all groups.</p></li>
+<li><p>groups are roughly the same size and is shuffled</p></li>
+</ol>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>bulk</strong> (<em>dict of</em><em> (</em><em>str: any</em><em>)</em>) – The indexed objects to create groups from.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>dict of int</strong> – Sample IDs grouped into n_groups groups.
+These IDs are not shuffled.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>(list of str)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-collect.generate.dataset.trajectron">
+<span id="trajectron-dataset-submodule"></span><h1>Trajectron Dataset submodule<a class="headerlink" href="#module-collect.generate.dataset.trajectron" title="Permalink to this headline">¶</a></h1>
+<p>Module for generating and inspecting Trajectron++ specific datasets.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.FrequencyModificationConfig">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">FrequencyModificationConfig</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">complete_intersection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">significant_at_intersection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stopped_at_intersection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">other_at_intersection</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">turn_at_other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">significant_at_other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stopped_at_other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">other_at_other</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.FrequencyModificationConfig" title="Permalink to this definition">¶</a></dt>
+<dd><p>Values to set frequency modifier of scenes.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.FrequencyModificationConfig.from_file">
+<em class="property"><span class="pre">classmethod</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">from_file</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">config_path</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.FrequencyModificationConfig.from_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Read a frequency modifier from JSON file.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">TrajectronSceneData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scenes</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Trajectron++ scene data. Used to inspect data, count samples in the dataset,
+and reweight samples when generating a dataset.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.n_nodes">
+<span class="sig-name descname"><span class="pre">n_nodes</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.n_nodes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Number of nodes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_scene_dict">
+<span class="sig-name descname"><span class="pre">nodeid_scene_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_scene_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>scene+node ID =&gt; scene the node is in</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, Scene)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_scene_dict">
+<span class="sig-name descname"><span class="pre">sceneid_scene_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_scene_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>scene ID =&gt; scene</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, Scene)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_count_dict">
+<span class="sig-name descname"><span class="pre">sceneid_count_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_count_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>scene ID =&gt; scene counts</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, util.AttrDict)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.map_nodeids_dict">
+<span class="sig-name descname"><span class="pre">map_nodeids_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.map_nodeids_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>map to scene+node ID =&gt; node</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, list of str)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_node_dict">
+<span class="sig-name descname"><span class="pre">nodeid_node_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_node_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>node ID =&gt; node</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, Node)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_sls_dict">
+<span class="sig-name descname"><span class="pre">nodeid_sls_dict</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.nodeid_sls_dict" title="Permalink to this definition">¶</a></dt>
+<dd><p>scene+node ID to node Shapely LineString</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, shapely.geometry.LineString)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.total_counts">
+<span class="sig-name descname"><span class="pre">total_counts</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.total_counts" title="Permalink to this definition">¶</a></dt>
+<dd><p>total counts of nodes across the dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>util.AttrDict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.nodeattr_df">
+<span class="sig-name descname"><span class="pre">nodeattr_df</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.nodeattr_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>data frame of node attributes.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.sceneattr_count_df">
+<span class="sig-name descname"><span class="pre">sceneattr_count_df</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.sceneattr_count_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Each row is the count of nodes in the scene.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.scene_count_df">
+<span class="sig-name descname"><span class="pre">scene_count_df</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.scene_count_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Breakdown of nodes per scene.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>DataFrame</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.scenes">
+<span class="sig-name descname"><span class="pre">scenes</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.scenes" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of scenes in dataset.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>list of Scene</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.cached_map_data">
+<span class="sig-name descname"><span class="pre">cached_map_data</span></span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.cached_map_data" title="Permalink to this definition">¶</a></dt>
+<dd><p>Cached map data for querying.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>CachedMapData</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.inspect_node">
+<span class="sig-name descname"><span class="pre">inspect_node</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scene</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">node</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.inspect_node" title="Permalink to this definition">¶</a></dt>
+<dd><p>Inspect attribute from node.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>node</strong> (<em>Node</em>) – Node to inspect.</p></li>
+<li><p><strong>scene</strong> (<em>Scene</em>) – Scene the node belongs to.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The node attributes.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>util.AttrDict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.log_node_count">
+<span class="sig-name descname"><span class="pre">log_node_count</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">filename</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'scene_histogram'</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.log_node_count" title="Permalink to this definition">¶</a></dt>
+<dd><p>Log total node counts, and save a histogram plot of node counts in scenes.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.sample_scenes">
+<span class="sig-name descname"><span class="pre">sample_scenes</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">n_samples</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scene_ids</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.sample_scenes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Weighted sampling of scene IDs without replacement.
+If sampling more than the number of IDs available, then just return all IDs.</p>
+<p>Currently samples scenes with significan number of nodes classified as:</p>
+<ul class="simple">
+<li><p>complete_intersection</p></li>
+<li><p>significant_at_intersection</p></li>
+<li><p>turn_at_other</p></li>
+<li><p>significant_at_other</p></li>
+</ul>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>n_samples</strong> (<em>int</em>) – Number of scenes to sample from.</p></li>
+<li><p><strong>scene_ids</strong> (<em>list of str</em>) – Selected scene IDs to sample from. If not provided then just sample
+from all scene IDs provided at initialization.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The sampled scenes IDs.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>list of str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.TrajectronSceneData.set_node_fm">
+<span class="sig-name descname"><span class="pre">set_node_fm</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fm_modification</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#collect.generate.dataset.trajectron.FrequencyModificationConfig" title="collect.generate.dataset.trajectron.FrequencyModificationConfig"><span class="pre">collect.generate.dataset.trajectron.FrequencyModificationConfig</span></a></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.TrajectronSceneData.set_node_fm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Set node frequency multiplier.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.max_curvature">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">max_curvature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">X</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.max_curvature" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute trajectory curvature based on cubic spline approx
+and applying convolution to impove numerical stability.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.node_to_df">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">node_to_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">node</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.node_to_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Trajectron++ node to data frame.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.scene_to_df">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">scene_to_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scene</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.scene_to_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Trajectron++ scene to data frame.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.scenes_to_df">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">scenes_to_df</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">scenes</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_world_position</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.scenes_to_df" title="Permalink to this definition">¶</a></dt>
+<dd><p>Combine Trajectron++ scenes to a single data frame.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.dataset.trajectron.trajectory_curvature">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.dataset.trajectron.</span></span><span class="sig-name descname"><span class="pre">trajectory_curvature</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">t</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.dataset.trajectron.trajectory_curvature" title="Permalink to this definition">¶</a></dt>
+<dd><p>Compute trajectory curvature based on Trajectron++ code.</p>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">CARLA Collect</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="collect.html">Collect submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generate.html">Generate submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="generate.html#module-collect.generate.label">Labels submodule</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Dataset submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#module-collect.generate.dataset.trajectron">Trajectron Dataset submodule</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="generate.html" title="previous chapter">Generate submodule</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, Colin Chen.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/sections/dataset.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

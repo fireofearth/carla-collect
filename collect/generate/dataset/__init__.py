@@ -1,20 +1,28 @@
-"""Dataset group, resampling, and validation split module.
-"""
+"""Module constructing generic datasets no specific to any model architecture.
+Does dataset grouping, shuffling, and constructs validation split."""
+
+# Built-in libraries
 import os
 import json
 import logging
 import glob
 
+# PyPI libraries
 import numpy as np
 
+# Local libararies
 import utility as util
+
+# Modules
 from ..label import carla_id_maker
 
 logger = logging.getLogger(__name__)
 
 class CrossValidationSplitCreator(object):
+    """Make cross validation splits from groups."""
 
     def __init__(self, config):
+
         self.config = config
 
     @staticmethod
@@ -50,6 +58,7 @@ class CrossValidationSplitCreator(object):
         return splits
 
 class SampleGroupCreator(object):
+    """Make groups from samples."""
 
     def __init__(self, config):
 

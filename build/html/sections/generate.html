@@ -1,0 +1,237 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.17.1: http://docutils.sourceforge.net/" />
+
+    <title>Generate submodule &#8212; CARLA Collect 2022 documentation</title>
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="../_static/alabaster.css" />
+    <script data-url_root="../" id="documentation_options" src="../_static/documentation_options.js"></script>
+    <script src="../_static/jquery.js"></script>
+    <script src="../_static/underscore.js"></script>
+    <script src="../_static/doctools.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Dataset submodule" href="dataset.html" />
+    <link rel="prev" title="Collect submodule" href="collect.html" />
+   
+  <link rel="stylesheet" href="../_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="module-collect.generate">
+<span id="generate-submodule"></span><h1>Generate submodule<a class="headerlink" href="#module-collect.generate" title="Permalink to this headline">¶</a></h1>
+<p>Functions and classes for generation of data.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.AbstractDataCollector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.</span></span><span class="sig-name descname"><span class="pre">AbstractDataCollector</span></span><a class="headerlink" href="#collect.generate.AbstractDataCollector" title="Permalink to this definition">¶</a></dt>
+<dd><p>Data collector that holds scenes of instance SceneBuilder.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.DataCollector">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.</span></span><span class="sig-name descname"><span class="pre">DataCollector</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">player_actor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">map_reader</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">other_vehicle_ids</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scene_config=&lt;collect.generate.scene.scene.SceneConfig</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">scene_builder_cls=&lt;class</span> <span class="pre">'collect.generate.scene.v3.trajectron_scene.TrajectronPlusPlusSceneBuilder'&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_frequency=35</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">save_directory='out'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">n_burn_frames=60</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">episode=0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">exclude_samples=&lt;collect.generate.label.SampleLabelFilter</span> <span class="pre">object&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">callback=&lt;function</span> <span class="pre">DataCollector.&lt;lambda&gt;&gt;</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug=False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.DataCollector" title="Permalink to this definition">¶</a></dt>
+<dd><p>Data collector based on DIM and Trajectron++.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>player_actor</strong> (<em>carla.Vehicle</em>) – Vehicle that the data collector is following around, and should collect data for.</p></li>
+<li><p><strong>map_reader</strong> (<em>MapQuerier</em>) – One MapQuerier instance should be shared by all data collectors.</p></li>
+<li><p><strong>record_interval</strong> (<em>int</em>) – Number of timesteps</p></li>
+<li><p><strong>scene_interval</strong> (<em>int</em>) – </p></li>
+<li><p><strong>save_frequency</strong> (<em>int</em>) – Frequency (wrt. to CARLA simulator frame) to save data.</p></li>
+<li><p><strong>n_burn_frames</strong> (<em>int</em>) – The number of initial frames to skip before saving data.</p></li>
+<li><p><strong>episode</strong> (<em>int</em>) – Index of current episode to collect data from.</p></li>
+<li><p><strong>exclude_samples</strong> (<a class="reference internal" href="#collect.generate.label.SampleLabelFilter" title="collect.generate.label.SampleLabelFilter"><em>SampleLabelFilter</em></a>) – Filter to exclude saving samples by label.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.DataCollector.destroy">
+<span class="sig-name descname"><span class="pre">destroy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.DataCollector.destroy" title="Permalink to this definition">¶</a></dt>
+<dd><p>Release all the CARLA resources used by this collector.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.DataCollector.parse_image">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">parse_image</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">weak_self</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">image</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.DataCollector.parse_image" title="Permalink to this definition">¶</a></dt>
+<dd><p>Pass sensor image to each scene builder.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>image</strong> (<em>carla.SemanticLidarMeasurement</em>) – </p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.DataCollector.stop_sensor">
+<span class="sig-name descname"><span class="pre">stop_sensor</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.DataCollector.stop_sensor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Stop the sensor.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="collect.generate.create_semantic_lidar_blueprint">
+<span class="sig-prename descclassname"><span class="pre">collect.generate.</span></span><span class="sig-name descname"><span class="pre">create_semantic_lidar_blueprint</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">world</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.create_semantic_lidar_blueprint" title="Permalink to this definition">¶</a></dt>
+<dd><p>Construct a semantic LIDAR sensor blueprint.
+Based on <a class="reference external" href="https://ouster.com/products/os2-lidar-sensor/">https://ouster.com/products/os2-lidar-sensor/</a></p>
+<p>Note: semantic LIDAR does not have dropoff or noise.
+May have to mock this in the preprocessesing stage.</p>
+</dd></dl>
+
+</section>
+<section id="module-collect.generate.label">
+<span id="labels-submodule"></span><h1>Labels submodule<a class="headerlink" href="#module-collect.generate.label" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.BoundingRegionLabel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">BoundingRegionLabel</span></span><a class="headerlink" href="#collect.generate.label.BoundingRegionLabel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Labels samples whether they are inside a bounding region.
+Use this to select cars on (a) specific lane(s), intersection(s)</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.SampleLabelFilter">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">SampleLabelFilter</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">intersection_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slope_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounding_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.label.SampleLabelFilter" title="Permalink to this definition">¶</a></dt>
+<dd><p>Container for sample label filter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>intersection_type</strong> (<em>list of str</em>) – </p></li>
+<li><p><strong>slope_type</strong> (<em>list of str</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.label.SampleLabelFilter.contains">
+<span class="sig-name descname"><span class="pre">contains</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">_type</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">label</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.label.SampleLabelFilter.contains" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check whether a label of type _type is in the filter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>_type</strong> (<em>str</em>) – Label type to lookup.</p></li>
+<li><p><strong>label</strong> (<em>str</em>) – Label to check for existence in filter.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>bool</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.SampleLabelMap">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">SampleLabelMap</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">intersection_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NONE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slope_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NONE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bounding_type</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">'NONE'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slope_pitch</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.label.SampleLabelMap" title="Permalink to this definition">¶</a></dt>
+<dd><p>Container of sample labels, categorized by different types.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.ScenarioIntersectionLabel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">ScenarioIntersectionLabel</span></span><a class="headerlink" href="#collect.generate.label.ScenarioIntersectionLabel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Labels samples by proximity of vehicle to intersections.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.ScenarioSlopeLabel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">ScenarioSlopeLabel</span></span><a class="headerlink" href="#collect.generate.label.ScenarioSlopeLabel" title="Permalink to this definition">¶</a></dt>
+<dd><p>Labels samples by proximity of vehicle to slopes.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.label.SegmentationLabel">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.label.</span></span><span class="sig-name descname"><span class="pre">SegmentationLabel</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">value</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.label.SegmentationLabel" title="Permalink to this definition">¶</a></dt>
+<dd><p>An enumeration.</p>
+</dd></dl>
+
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="../index.html">CARLA Collect</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="collect.html">Collect submodule</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Generate submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#module-collect.generate.label">Labels submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset.html">Dataset submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="dataset.html#module-collect.generate.dataset.trajectron">Trajectron Dataset submodule</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="../index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="collect.html" title="previous chapter">Collect submodule</a></li>
+      <li>Next: <a href="dataset.html" title="next chapter">Dataset submodule</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="../search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2022, Colin Chen.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 4.5.0</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="../_sources/sections/generate.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

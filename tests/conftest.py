@@ -15,10 +15,7 @@ from collect.in_simulation import load_model
 from collect.generate.scene.v3_2.trajectron_scene import standardization
 from . import (
     MODEL_SPEC_1,
-    MODEL_SPEC_2,
-    MODEL_SPEC_3,
     MODEL_SPEC_4,
-    MODEL_SPEC_5,
     MODEL_SPEC_6,
     CARLA_HOST,
     CARLA_PORT,
