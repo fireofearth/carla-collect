@@ -1,12 +1,12 @@
 #!/bin/bash
 
-source lab.env.sh
+# source lab.env.sh
 
-# python synthesize.py \
-#     --label Town03 \
-#     --map Town03
+python synthesize.py \
+    --label Town03 \
+    --map Town03
 
-# sleep 3
+sleep 3
 
 python synthesize.py \
     --start-at-episode 5 \

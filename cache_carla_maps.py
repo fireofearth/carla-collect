@@ -5,7 +5,7 @@ import argparse
 
 import carla
 from collect import CACHEDIR
-from collect.generate.map import CARLA_MAP_NAMES, MapDataExtractor
+from collect.generate.map import CachedMapData
 
 
 def parse_arguments():
@@ -30,7 +30,7 @@ def parse_arguments():
 def main(config):
     client = carla.Client(config.host, config.port)
     client.set_timeout(10.0)
-    MapDataExtractor.save_map_data_to_cache(client)
+    CachedMapData.save_map_data_to_cache(client)
 
 
 if __name__ == "__main__":

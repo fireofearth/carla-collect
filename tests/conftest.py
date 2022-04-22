@@ -22,7 +22,14 @@ from . import (
     SEED
 )
 
-model_spec = MODEL_SPEC_6
+def get_model_spec():
+    if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+        logging.info("Assuming we are using CARLA v0.9.13")
+        return MODEL_SPEC_6
+    else:
+        logging.info("Assuming we are using CARLA v0.9.11")
+        return MODEL_SPEC_4
+
 
 @pytest.fixture(scope="module")
 def eval_env():
@@ -40,6 +47,7 @@ def eval_env():
 @pytest.fixture(scope="module")
 def eval_stg(eval_env):
     """Load model in CPU."""
+    model_spec = get_model_spec()
     model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
             model_spec.path)
     eval_stg, stg_hyp = load_model(
@@ -50,6 +58,7 @@ def eval_stg(eval_env):
 @pytest.fixture(scope="module")
 def eval_stg_cuda(eval_env):
     """Load model in GPU."""
+    model_spec = get_model_spec()
     model_path = os.path.join(os.environ['TRAJECTRONPP_DIR'],
             model_spec.path)
     eval_stg, stg_hyp = load_model(

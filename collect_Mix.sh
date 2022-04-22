@@ -1,6 +1,6 @@
 #!/bin/bash
 
-source lab.env.sh
+# source lab.env.sh
 
 python synthesize.py \
        --label Town03 \
