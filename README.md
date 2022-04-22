@@ -107,8 +107,9 @@ Install the Python client for CARLA.
 `$CARLA_DIR/PythonAPI/carla/dist/carla-0.9.11-py3.7-linux-x86_64.egg` to your `PYTHONPATH`.
 I've provided a way to do this automatically using the script `py37.env.sh` described later.
 
-**Step 5**.
+**Step 5 (optional)**.
 Install IBM ILOG CPLEX Optimization Studio V12.10.0.
+Skip this step if you don't want to run [in-simulation experiments](#in-simulation-experiments).
 It should be installed to `/opt/ibm/ILOG/CPLEX_Studio1210`.
 The script `py37.env.sh` should automatically export the installation path so it can be discoverable by the `docplex` library used in `carla-collect`.
 
@@ -131,7 +132,7 @@ without you having to manually set up your terminal environment.
 
 **Step 7 (optional)**.
 Download the datasets.
-Skip this step if you only want to run 
+Skip this step if you only want to run [in-simulation experiments](#in-simulation-experiments) or synthesize your own dataset.
 It's necessary if you want to run the Jupyter notebooks in `carla-collect/Trajectron-plus-plus`.
 
 **Step 7.1**.
@@ -324,6 +325,7 @@ If you completed **Step 7** of installation then there are 3 training BASH scrip
 - `nuScenes.train_dynmap.ph8.sh` train model on nuScenes preprocessed dataset.
 
 Simply call them like so `source SCRIPT.sh`.
+Feel free to modify these scripts to train a model on your own dataset.
 See the README in `carla-collect/Trajectron-plus-plus` for more about the model.
 
 ## Jupyter Notebooks
