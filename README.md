@@ -1,6 +1,6 @@
 ## Introduction
 
-TBD
+Work to extend the [CDC paper](https://ieeexplore.ieee.org/document/9455144) and the deep learning model Trajectron++, to motion planning in CARLA Simulator.
 
 ## Installation
 
