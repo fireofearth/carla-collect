@@ -1,3 +1,4 @@
+import os
 import time
 import math
 import logging
@@ -132,14 +133,17 @@ class MonteCarloScenario(object):
                 agent.set_goal(**self.scenario_params.goal)
 
             """Setup vehicle routes"""
-            for k, vehicle in enumerate(other_vehicles):
-                route = None
-                try:
-                    route = self.scenario_params.other_routes[k]
-                    len(route)
-                except (TypeError, IndexError) as e:
-                    continue
-                self.traffic_manager.set_route(vehicle, route)
+            if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+                for k, vehicle in enumerate(other_vehicles):
+                    route = None
+                    try:
+                        route = self.scenario_params.other_routes[k]
+                        len(route)
+                    except (TypeError, IndexError) as e:
+                        continue
+                    self.traffic_manager.set_route(vehicle, route)
+            else:
+                logging.info("Skipping setting up OV routes.")
             
             if episode_idx == 0:
                 """Move the spectator to the ego vehicle.
@@ -320,14 +324,17 @@ class PlannerScenario(object):
             assert agent.sensor_is_listening
 
             """Setup vehicle routes"""
-            for k, vehicle in enumerate(other_vehicles):
-                route = None
-                try:
-                    route = self.scenario_params.other_routes[k]
-                    len(route)
-                except (TypeError, IndexError) as e:
-                    continue
-                self.traffic_manager.set_route(vehicle, route)
+            if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+                for k, vehicle in enumerate(other_vehicles):
+                    route = None
+                    try:
+                        route = self.scenario_params.other_routes[k]
+                        len(route)
+                    except (TypeError, IndexError) as e:
+                        continue
+                    self.traffic_manager.set_route(vehicle, route)
+            else:
+                logging.info("Skipping setting up OV routes.")
             
             """Move the spectator to the ego vehicle.
             The positioning is a little off"""

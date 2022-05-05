@@ -5,6 +5,7 @@ docplex
 slycot
 control
 networkx
+shapely
 # carla==0.9.13
 
 # documentation and testing
@@ -13,3 +14,4 @@ pygame
 black
 sphinx
 myst-parser
+torchinfo

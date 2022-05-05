@@ -1,16 +1,20 @@
+import os
 import time
 import logging
 import numpy as np
 import pytest
+
 import carla
 import utility as util
 import carlautil
+
 from tests import (
     LoopEnum,
     ScenarioParameters,
     CtrlParameters,
     shift_spawn_point
 )
+from collect.exception import CollectException
 from collect.generate import get_all_vehicle_blueprints
 from collect.generate.scene import OnlineConfig
 
@@ -169,7 +173,10 @@ def test_Town03_scenario(
     scenario_params,
     carla_Town03_synchronous
 ):
-    AutopilotScenario(
-        scenario_params,
-        carla_Town03_synchronous
-    ).run()
+    if "CARLANAME" in os.environ and os.environ["CARLANAME"] == "carla-0.9.13":
+        AutopilotScenario(
+            scenario_params,
+            carla_Town03_synchronous
+        ).run()
+    else:
+        raise CollectException("Autopilot route planning doesn't work for 0.9.11")
