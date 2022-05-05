@@ -150,8 +150,8 @@ The vehicles in the dataset behave quite differently because the vehicles were o
 
 Cloud Link: <https://drive.google.com/drive/folders/1PR587zadQ_C3jHT3o_56XGBIlgXVCZbR?usp=sharing>
 
-Note, you need Python 3.8 if you want to load this dataset,
-so redo step 3 with Python 3.8 and create a virtual environment py38trajectron with the same packages installed.
+Note, you need Python 3.8 if you want to load this dataset to do model training, etc.
+Redo step 3 with Python 3.8 and create a virtual environment py38trajectron with the same packages installed.
 
 **Step 7.3**.
 Download the `.pkl` files for the preprocessed nuScenes dataset from Google Drive into the directory
@@ -186,6 +186,7 @@ To rebuild this documentation from source `carla-collect/source`, do `source py3
 
 ## In-Simulation Experiments
 
+You need to start CARLA to run these, so do that first.
 In `carla-collect`, all tests are implemented using the testing library [pytest](`https://docs.pytest.org/`).
 Please list all tests/experiments by doing:
 

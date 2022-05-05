@@ -13,6 +13,7 @@ Welcome to CARLA Collect's documentation!
     sections/collect
     sections/generate
     sections/dataset
+    sections/development
 
 Architecture
 ============

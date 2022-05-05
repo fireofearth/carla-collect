@@ -76,11 +76,8 @@ def augment_scene(scene, angle):
     data_columns_vehicle = pd.MultiIndex.from_product([['position', 'velocity', 'acceleration', 'heading'], ['x', 'y']])
     data_columns_vehicle = data_columns_vehicle.append(pd.MultiIndex.from_tuples([('heading', '°'), ('heading', 'd°')]))
     data_columns_vehicle = data_columns_vehicle.append(pd.MultiIndex.from_product([['velocity', 'acceleration'], ['norm']]))
-
     data_columns_pedestrian = pd.MultiIndex.from_product([['position', 'velocity', 'acceleration'], ['x', 'y']])
-
     scene_aug = Scene(timesteps=scene.timesteps, dt=scene.dt, name=scene.name, non_aug_scene=scene)
-
     alpha = angle * np.pi / 180
 
     for node in scene.nodes:
@@ -267,7 +264,10 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
     def __process_carla_scene(self, data):
         # Get extent and sizing from trajectory data.
         traj_data = data.trajectory_data
-        comp_key = np.logical_and(traj_data['node_id'] == 'ego', traj_data['frame_id'] == 0)
+        comp_key = np.logical_and(
+            traj_data['node_id'] == 'ego',
+            traj_data['frame_id'] == 0
+        )
         ego_data = traj_data[comp_key]
         ego_z_bound = [ego_data['z'].min(), ego_data['z'].max()]
         s = ego_data.iloc[0]
@@ -283,12 +283,15 @@ class TrajectronPlusPlusSceneBuilder(SceneBuilder):
         # Filter road from LIDAR points.
         points = data.overhead_points
         z_mask = np.logical_and(
-                points[:, 2] > ego_z_bound[0] - self.Z_LOWERBOUND,
-                points[:, 2] < ego_z_bound[1] + self.Z_UPPERBOUND)
+            points[:, 2] > ego_z_bound[0] - self.Z_LOWERBOUND,
+            points[:, 2] < ego_z_bound[1] + self.Z_UPPERBOUND
+        )
         points = data.overhead_points[z_mask]
         labels = data.overhead_labels[z_mask]
-        road_label_mask = np.logical_or(labels == SegmentationLabel.Road.value,
-                labels == SegmentationLabel.Vehicle.value)
+        road_label_mask = np.logical_or(
+            labels == SegmentationLabel.Road.value,
+            labels == SegmentationLabel.Vehicle.value
+        )
         road_points = points[road_label_mask]
         
         # Adjust and filter occlusions from trajectory data.

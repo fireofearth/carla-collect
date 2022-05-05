@@ -9,3 +9,9 @@ Labels submodule
 
 .. automodule:: collect.generate.label
     :members:
+
+Map submodule
+=============
+
+.. automodule:: collect.generate.map
+    :members:

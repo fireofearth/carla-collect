@@ -50,7 +50,7 @@
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>player_actor</strong> (<em>carla.Vehicle</em>) – Vehicle that the data collector is following around, and should collect data for.</p></li>
-<li><p><strong>map_reader</strong> (<em>MapQuerier</em>) – One MapQuerier instance should be shared by all data collectors.</p></li>
+<li><p><strong>map_reader</strong> (<a class="reference internal" href="#collect.generate.map.MapQuerier" title="collect.generate.map.MapQuerier"><em>MapQuerier</em></a>) – One MapQuerier instance should be shared by all data collectors.</p></li>
 <li><p><strong>record_interval</strong> (<em>int</em>) – Number of timesteps</p></li>
 <li><p><strong>scene_interval</strong> (<em>int</em>) – </p></li>
 <li><p><strong>save_frequency</strong> (<em>int</em>) – Frequency (wrt. to CARLA simulator frame) to save data.</p></li>
@@ -160,6 +160,349 @@ Use this to select cars on (a) specific lane(s), intersection(s)</p>
 </dd></dl>
 
 </section>
+<section id="module-collect.generate.map">
+<span id="map-submodule"></span><h1>Map submodule<a class="headerlink" href="#module-collect.generate.map" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.CachedMapData">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">CachedMapData</span></span><a class="headerlink" href="#collect.generate.map.CachedMapData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Manages the persisting of map data from MapDataExtractor
+to cache in a way that can be loaded for other purposes.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.CachedMapData.map_datum">
+<span class="sig-name descname"><span class="pre">map_datum</span></span><a class="headerlink" href="#collect.generate.map.CachedMapData.map_datum" title="Permalink to this definition">¶</a></dt>
+<dd><p>Name of map to road data consisting of:
+road_polygons, white_lines, yellow_lines, junctions, spawn_points.
+Road polygons and lines are obtained from
+<a class="reference internal" href="#collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines" title="collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines"><code class="xref py py-meth docutils literal notranslate"><span class="pre">extract_road_polygons_and_lines()</span></code></a>.
+Junctions are obtained from
+<a class="reference internal" href="#collect.generate.map.MapDataExtractor.extract_junction_with_portals" title="collect.generate.map.MapDataExtractor.extract_junction_with_portals"><code class="xref py py-meth docutils literal notranslate"><span class="pre">extract_junction_with_portals()</span></code></a>.
+Spawn points are obtained from
+<code class="xref py py-meth docutils literal notranslate"><span class="pre">extract_spawn_points()</span></code>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, util.AttrDict)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.CachedMapData.map_to_smpolys">
+<span class="sig-name descname"><span class="pre">map_to_smpolys</span></span><a class="headerlink" href="#collect.generate.map.CachedMapData.map_to_smpolys" title="Permalink to this definition">¶</a></dt>
+<dd><p>Name of map to Shapely MultiPolygon boxes bounding junction entrance/exits.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, (list of MultiPolygon))</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.CachedMapData.map_to_scircles">
+<span class="sig-name descname"><span class="pre">map_to_scircles</span></span><a class="headerlink" href="#collect.generate.map.CachedMapData.map_to_scircles" title="Permalink to this definition">¶</a></dt>
+<dd><p>Name of map to Shapely circle covering junction region.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>dict of (str, (list of Polygon))</p>
+</dd>
+</dl>
+</dd></dl>
+
+<p>Load map data from cache and collect shapes of all the intersections.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.CachedMapData.save_map_data_to_cache">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">save_map_data_to_cache</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">client</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.CachedMapData.save_map_data_to_cache" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extract data from all maps through a CARLA client and save to disk.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>client</strong> (<em>carla.Client</em>) – Client to access live map data.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.IntersectionReader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">IntersectionReader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">carla_world</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">carla_map</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.IntersectionReader" title="Permalink to this definition">¶</a></dt>
+<dd><p>Used to query whether actor is on an intersection and a hill on the map.</p>
+<p>TODO: refactor to use MapDataExtractor to get map data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>carla_world</strong> (<em>carla.World</em>) – </p></li>
+<li><p><strong>carla_map</strong> (<em>carla.Map</em>) – </p></li>
+<li><p><strong>debug</strong> (<em>bool</em>) – </p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.IntersectionReader.at_intersection_to_label">
+<span class="sig-name descname"><span class="pre">at_intersection_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.IntersectionReader.at_intersection_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retrieve the label corresponding to the actor’s location in the
+map based on proximity to intersections.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actor</strong> (<em>carla.Actor</em>) – </p></li>
+<li><p><strong>Returns</strong> – </p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.IntersectionReader.at_slope_to_label">
+<span class="sig-name descname"><span class="pre">at_slope_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.IntersectionReader.at_slope_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check wheter actor (i.e. vehicle) is near a slope,
+returning a ScenarioSlopeLabel.</p>
+<p>TODO: make wp_locations array size smaller after debugging.
+Don’t need to check non-sloped waypoints.</p>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.IntersectionReader.wp_is_sloped">
+<span class="sig-name descname"><span class="pre">wp_is_sloped</span></span><a class="headerlink" href="#collect.generate.map.IntersectionReader.wp_is_sloped" title="Permalink to this definition">¶</a></dt>
+<dd><p>Generate intersection topology of the map</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.Map10HDBoundTIntersectionReader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">Map10HDBoundTIntersectionReader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">carla_world</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">carla_map</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.Map10HDBoundTIntersectionReader" title="Permalink to this definition">¶</a></dt>
+<dd><p>Label samples in Map10HD that are in specific
+T-intersection.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.Map10HDBoundTIntersectionReader.at_bounding_box_to_label">
+<span class="sig-name descname"><span class="pre">at_bounding_box_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.Map10HDBoundTIntersectionReader.at_bounding_box_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check whether actor (i.e. vehicle) is inside a bounding region.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.MapData">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">MapData</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">road_polygons</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">yellow_lines</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">white_lines</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapData" title="Permalink to this definition">¶</a></dt>
+<dd><p>Map data.
+TODO: DEPRECATED</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.MapData.road_polygons">
+<span class="sig-name descname"><span class="pre">road_polygons</span></span><a class="headerlink" href="#collect.generate.map.MapData.road_polygons" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of road polygons (closed), each represented as array of shape (?, 2)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>list of np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.MapData.yellow_lines">
+<span class="sig-name descname"><span class="pre">yellow_lines</span></span><a class="headerlink" href="#collect.generate.map.MapData.yellow_lines" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of white road lines, each represented as array of shape (?, 2)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>list of  np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="collect.generate.map.MapData.white_lines">
+<span class="sig-name descname"><span class="pre">white_lines</span></span><a class="headerlink" href="#collect.generate.map.MapData.white_lines" title="Permalink to this definition">¶</a></dt>
+<dd><p>List of white road lines, each represented as array of shape (?, 2)</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>list of np.array</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.MapDataExtractor">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">MapDataExtractor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">carla_world</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">carla_map</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapDataExtractor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Utility class to extract properties of the CARLA map.</p>
+<p>Constructor.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>carla_world</strong> (<em>carla.World</em>) – CARLA World.</p></li>
+<li><p><strong>carla_map</strong> (<em>carla.Map</em>) – CARLA Map.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapDataExtractor.extract_junction_with_portals">
+<span class="sig-name descname"><span class="pre">extract_junction_with_portals</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapDataExtractor.extract_junction_with_portals" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extract junctions from the map</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><p>Each of junction has these attributes:</p>
+<ul class="simple">
+<li><p><strong>pos</strong> : ndarray
+- The (x, y) position of the junction.</p></li>
+<li><p><strong>waypoints</strong> : ndarray
+- Pairs of waypoint entering and exiting the junction f shape (n pairs, 2, 4).
+Each waypoint is (x position, y position, yaw, road length).</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>list of util.AttrDict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines">
+<span class="sig-name descname"><span class="pre">extract_road_polygons_and_lines</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sampling_precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.05</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extract road white and yellow dividing lines, and road polygons.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>sampling_precision</strong> (<em>float</em>) – Space between sampling points to create road data.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><p>Payload of road network information with the following keys:</p>
+<ul class="simple">
+<li><p>road_polygons: list of road polygons (closed), each represented as array of shape (?, 2)</p></li>
+<li><p>yellow_lines: list of white road lines, each represented as array of shape (?, 2)</p></li>
+<li><p>white_lines: list of white road lines, each represented as array of shape (?, 2)</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>util.AttrDict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapDataExtractor.extract_waypoint_points">
+<span class="sig-name descname"><span class="pre">extract_waypoint_points</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">sampling_precision</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">4.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">slope_degrees</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">5.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapDataExtractor.extract_waypoint_points" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extract slope topology of the map</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">MapQuerier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">carla_world</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">carla_map</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier" title="Permalink to this definition">¶</a></dt>
+<dd><p>Abstract class to keep track of properties in a map and
+used to query whether an actor is in a certain part
+(i.e. intersection, hill) of the map for the sake of
+labeling samples.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.at_bounding_box_to_label">
+<span class="sig-name descname"><span class="pre">at_bounding_box_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier.at_bounding_box_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check whether actor (i.e. vehicle) is inside a bounding region.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.at_intersection_to_label">
+<span class="sig-name descname"><span class="pre">at_intersection_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier.at_intersection_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retrieve the label corresponding to the actor’s location in the
+map based on proximity to intersections.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.at_slope_to_label">
+<span class="sig-name descname"><span class="pre">at_slope_to_label</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier.at_slope_to_label" title="Permalink to this definition">¶</a></dt>
+<dd><p>Check wheter actor (i.e. vehicle) is near a slope,
+returning a ScenarioSlopeLabel.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.curved_road_segments_enclosure_from_actor">
+<span class="sig-name descname"><span class="pre">curved_road_segments_enclosure_from_actor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">carla.libcarla.Actor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_distance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">utility.AttrDict</span></span></span><a class="headerlink" href="#collect.generate.map.MapQuerier.curved_road_segments_enclosure_from_actor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get segmented enclosure of fixed size from curved road.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actor</strong> (<em>carla.Actor</em>) – Position of actor to get starting waypoint.</p></li>
+<li><p><strong>max_distance</strong> (<em>float</em>) – The max distance of the path starting from <cite>start_wp</cite>. Use to specify length of path.</p></li>
+<li><p><strong>choices</strong> (<em>list of int</em>) – The indices of the turns to make when reaching a fork on the road network.
+<cite>choices[0]</cite> is the index of the first turn, <cite>choices[1]</cite> is the index of the second turn, etc.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><p>Container of road segment properties:</p>
+<ul class="simple">
+<li><p><strong>spline</strong> : scipy.interpolate.CubicSpline
+- The spline representing the path the vehicle should motion plan on.</p></li>
+<li><p><strong>polytopes</strong> : list of (ndarray, ndarray)
+- List of polytopes in H-representation (A, b)
+where x is in polytope if Ax &lt;= b.</p></li>
+<li><p><strong>distances</strong> : ndarray
+- The distances along the spline to follow from nearest endpoint
+before encountering corresponding covering polytope in index.</p></li>
+<li><p><strong>positions</strong> : ndarray
+- The 2D positions of center of the covering polytope in index.</p></li>
+</ul>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>util.AttrDict</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.render_map">
+<span class="sig-name descname"><span class="pre">render_map</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ax</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">extent</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier.render_map" title="Permalink to this definition">¶</a></dt>
+<dd><p>Render the map.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ax</strong> (<em>matplotlib.axes.Axes</em>) – </p></li>
+<li><p><strong>extent</strong> (<em>tuple of int</em>) – The extent of the map to render of form (x_min, x_max, y_min, y_max) in meters.
+If not passed, then render entire map.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.road_boundary_constraints_from_actor">
+<span class="sig-name descname"><span class="pre">road_boundary_constraints_from_actor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">carla.libcarla.Actor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_distance</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">choices</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">[]</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_x</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">flip_y</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">collect.generate.map.road.RoadBoundaryConstraint</span></span></span><a class="headerlink" href="#collect.generate.map.MapQuerier.road_boundary_constraints_from_actor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get segmented enclosure of fixed size from curved road.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>actor</strong> (<em>carla.Actor</em>) – Position of actor to get starting waypoint.</p></li>
+<li><p><strong>max_distance</strong> (<em>float</em>) – The max distance of the path starting from <cite>start_wp</cite>. Use to specify length of path.</p></li>
+<li><p><strong>choices</strong> (<em>list of int</em>) – The indices of the turns to make when reaching a fork on the road network.
+<cite>choices[0]</cite> is the index of the first turn, <cite>choices[1]</cite> is the index of the second turn, etc.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><em>RoadBoundaryConstraint</em> – The road boundary constraints.</p></li>
+<li><p><strong>TODO</strong> (<em>MapQuerier.road_segment_enclosure_from_actor() and</em>)</p></li>
+<li><p><em>MapQuerier.curved_road_segments_enclosure_from_actor()</em></p></li>
+<li><p><em>should be refactored to use RoadBoundaryConstraint as a factory.</em></p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="collect.generate.map.MapQuerier.road_segment_enclosure_from_actor">
+<span class="sig-name descname"><span class="pre">road_segment_enclosure_from_actor</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">actor</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">2.0</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.MapQuerier.road_segment_enclosure_from_actor" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get box enclosure from straight road.</p>
+<p>TODO: data should be flipped about x-axis</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="collect.generate.map.NaiveMapQuerier">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">collect.generate.map.</span></span><span class="sig-name descname"><span class="pre">NaiveMapQuerier</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">carla_world</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">carla_map</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">debug</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#collect.generate.map.NaiveMapQuerier" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+</section>
 
 
           </div>
@@ -183,8 +526,10 @@ Use this to select cars on (a) specific lane(s), intersection(s)</p>
 <li class="toctree-l1"><a class="reference internal" href="collect.html">Collect submodule</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Generate submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="#module-collect.generate.label">Labels submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="#module-collect.generate.map">Map submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataset.html">Dataset submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="dataset.html#module-collect.generate.dataset.trajectron">Trajectron Dataset submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="development.html">Development</a></li>
 </ul>
 
 <div class="relations">

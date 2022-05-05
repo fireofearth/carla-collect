@@ -20,7 +20,13 @@ import docplex.mp
 import docplex.mp.model
 
 # Local libraries
-from ...visualize.trajectron import render_scene, render_map_crop
+from ...visualize.trajectron import (
+    AGENT_COLORS,
+    NCOLORS,
+    PADDING,
+    render_scene,
+    render_map_crop
+)
 from ...trajectron import scene_to_df
 
 import carla
@@ -31,23 +37,6 @@ import utility.plu
 import carlautil
 import carlautil.debug
 
-
-AGENT_COLORS = [
-    "blue",
-    "darkviolet",
-    "dodgerblue",
-    "darkturquoise",
-    "green",
-    "gold",
-    "orange",
-    "red",
-    "deeppink",
-]
-AGENT_COLORS = np.array(AGENT_COLORS).take(
-    [(i * 5) % len(AGENT_COLORS) for i in range(17)], 0
-)
-NCOLORS = len(AGENT_COLORS)
-PADDING = 20
 
 OVEHICLE_COLORS = [
     clr.LinearSegmentedColormap.from_list("ro", ["red", "orange"], N=256),

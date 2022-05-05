@@ -49,6 +49,7 @@ def get_speed(vehicle):
     return np.sqrt(v_0_x ** 2 + v_0_y ** 2)
 
 class CapturingAgent(AbstractDataCollector):
+    """Agent that just does predictions, and does no motion planning."""
     
     Z_SENSOR_REL = 2.5
 

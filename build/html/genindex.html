@@ -38,14 +38,18 @@
  | <a href="#B"><strong>B</strong></a>
  | <a href="#C"><strong>C</strong></a>
  | <a href="#D"><strong>D</strong></a>
+ | <a href="#E"><strong>E</strong></a>
  | <a href="#F"><strong>F</strong></a>
  | <a href="#I"><strong>I</strong></a>
  | <a href="#L"><strong>L</strong></a>
  | <a href="#M"><strong>M</strong></a>
  | <a href="#N"><strong>N</strong></a>
  | <a href="#P"><strong>P</strong></a>
+ | <a href="#R"><strong>R</strong></a>
  | <a href="#S"><strong>S</strong></a>
  | <a href="#T"><strong>T</strong></a>
+ | <a href="#W"><strong>W</strong></a>
+ | <a href="#Y"><strong>Y</strong></a>
  
 </div>
 <h2 id="A">A</h2>
@@ -53,6 +57,26 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="sections/generate.html#collect.generate.AbstractDataCollector">AbstractDataCollector (class in collect.generate)</a>
 </li>
+      <li><a href="sections/generate.html#collect.generate.map.Map10HDBoundTIntersectionReader.at_bounding_box_to_label">at_bounding_box_to_label() (collect.generate.map.Map10HDBoundTIntersectionReader method)</a>
+
+      <ul>
+        <li><a href="sections/generate.html#collect.generate.map.MapQuerier.at_bounding_box_to_label">(collect.generate.map.MapQuerier method)</a>
+</li>
+      </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.IntersectionReader.at_intersection_to_label">at_intersection_to_label() (collect.generate.map.IntersectionReader method)</a>
+
+      <ul>
+        <li><a href="sections/generate.html#collect.generate.map.MapQuerier.at_intersection_to_label">(collect.generate.map.MapQuerier method)</a>
+</li>
+      </ul></li>
+      <li><a href="sections/generate.html#collect.generate.map.IntersectionReader.at_slope_to_label">at_slope_to_label() (collect.generate.map.IntersectionReader method)</a>
+
+      <ul>
+        <li><a href="sections/generate.html#collect.generate.map.MapQuerier.at_slope_to_label">(collect.generate.map.MapQuerier method)</a>
+</li>
+      </ul></li>
   </ul></td>
 </tr></table>
 
@@ -68,6 +92,8 @@
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.cached_map_data">cached_map_data (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.CachedMapData">CachedMapData (class in collect.generate.map)</a>
 </li>
       <li>
     collect
@@ -90,8 +116,6 @@
         <li><a href="sections/dataset.html#module-collect.generate.dataset">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     collect.generate.dataset.trajectron
 
@@ -99,6 +123,8 @@
         <li><a href="sections/dataset.html#module-collect.generate.dataset.trajectron">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     collect.generate.label
 
@@ -106,11 +132,20 @@
         <li><a href="sections/generate.html#module-collect.generate.label">module</a>
 </li>
       </ul></li>
+      <li>
+    collect.generate.map
+
+      <ul>
+        <li><a href="sections/generate.html#module-collect.generate.map">module</a>
+</li>
+      </ul></li>
       <li><a href="sections/generate.html#collect.generate.label.SampleLabelFilter.contains">contains() (collect.generate.label.SampleLabelFilter method)</a>
 </li>
       <li><a href="sections/generate.html#collect.generate.create_semantic_lidar_blueprint">create_semantic_lidar_blueprint() (in module collect.generate)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.CrossValidationSplitCreator">CrossValidationSplitCreator (class in collect.generate.dataset)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapQuerier.curved_road_segments_enclosure_from_actor">curved_road_segments_enclosure_from_actor() (collect.generate.map.MapQuerier method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -123,6 +158,20 @@
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="sections/generate.html#collect.generate.DataCollector.destroy">destroy() (collect.generate.DataCollector method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="E">E</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapDataExtractor.extract_junction_with_portals">extract_junction_with_portals() (collect.generate.map.MapDataExtractor method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines">extract_road_polygons_and_lines() (collect.generate.map.MapDataExtractor method)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapDataExtractor.extract_waypoint_points">extract_waypoint_points() (collect.generate.map.MapDataExtractor method)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -145,6 +194,10 @@
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.inspect_node">inspect_node() (collect.generate.dataset.trajectron.TrajectronSceneData method)</a>
 </li>
   </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.IntersectionReader">IntersectionReader (class in collect.generate.map)</a>
+</li>
+  </ul></td>
 </tr></table>
 
 <h2 id="L">L</h2>
@@ -162,7 +215,23 @@
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.CrossValidationSplitCreator.make_splits">make_splits() (collect.generate.dataset.CrossValidationSplitCreator method)</a>
 </li>
+      <li><a href="sections/generate.html#collect.generate.map.Map10HDBoundTIntersectionReader">Map10HDBoundTIntersectionReader (class in collect.generate.map)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.CachedMapData.map_datum">map_datum (collect.generate.map.CachedMapData attribute)</a>
+</li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.map_nodeids_dict">map_nodeids_dict (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.CachedMapData.map_to_scircles">map_to_scircles (collect.generate.map.CachedMapData attribute)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.CachedMapData.map_to_smpolys">map_to_smpolys (collect.generate.map.CachedMapData attribute)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapData">MapData (class in collect.generate.map)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapDataExtractor">MapDataExtractor (class in collect.generate.map)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapQuerier">MapQuerier (class in collect.generate.map)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.max_curvature">max_curvature() (in module collect.generate.dataset.trajectron)</a>
 </li>
@@ -180,6 +249,8 @@
 </li>
         <li><a href="sections/generate.html#module-collect.generate.label">collect.generate.label</a>
 </li>
+        <li><a href="sections/generate.html#module-collect.generate.map">collect.generate.map</a>
+</li>
       </ul></li>
   </ul></td>
 </tr></table>
@@ -189,7 +260,7 @@
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.n_nodes">n_nodes (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
 </li>
-      <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.node_to_df">node_to_df() (in module collect.generate.dataset.trajectron)</a>
+      <li><a href="sections/generate.html#collect.generate.map.NaiveMapQuerier">NaiveMapQuerier (class in collect.generate.map)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.nodeattr_df">nodeattr_df (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
 </li>
@@ -212,6 +283,22 @@
   </ul></td>
 </tr></table>
 
+<h2 id="R">R</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapQuerier.render_map">render_map() (collect.generate.map.MapQuerier method)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapQuerier.road_boundary_constraints_from_actor">road_boundary_constraints_from_actor() (collect.generate.map.MapQuerier method)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapData.road_polygons">road_polygons (collect.generate.map.MapData attribute)</a>
+</li>
+      <li><a href="sections/generate.html#collect.generate.map.MapQuerier.road_segment_enclosure_from_actor">road_segment_enclosure_from_actor() (collect.generate.map.MapQuerier method)</a>
+</li>
+  </ul></td>
+</tr></table>
+
 <h2 id="S">S</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -223,16 +310,16 @@
 </li>
       <li><a href="sections/generate.html#collect.generate.label.SampleLabelMap">SampleLabelMap (class in collect.generate.label)</a>
 </li>
+      <li><a href="sections/generate.html#collect.generate.map.CachedMapData.save_map_data_to_cache">save_map_data_to_cache() (collect.generate.map.CachedMapData static method)</a>
+</li>
       <li><a href="sections/generate.html#collect.generate.label.ScenarioIntersectionLabel">ScenarioIntersectionLabel (class in collect.generate.label)</a>
 </li>
       <li><a href="sections/generate.html#collect.generate.label.ScenarioSlopeLabel">ScenarioSlopeLabel (class in collect.generate.label)</a>
 </li>
-      <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.scene_count_df">scene_count_df (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
-</li>
-      <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.scene_to_df">scene_to_df() (in module collect.generate.dataset.trajectron)</a>
-</li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.scene_count_df">scene_count_df (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
+</li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.sceneattr_count_df">sceneattr_count_df (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_count_dict">sceneid_count_dict (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
@@ -240,8 +327,6 @@
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.sceneid_scene_dict">sceneid_scene_dict (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData.scenes">scenes (collect.generate.dataset.trajectron.TrajectronSceneData attribute)</a>
-</li>
-      <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.scenes_to_df">scenes_to_df() (in module collect.generate.dataset.trajectron)</a>
 </li>
       <li><a href="sections/generate.html#collect.generate.label.SegmentationLabel">SegmentationLabel (class in collect.generate.label)</a>
 </li>
@@ -262,6 +347,26 @@
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.trajectory_curvature">trajectory_curvature() (in module collect.generate.dataset.trajectron)</a>
 </li>
       <li><a href="sections/dataset.html#collect.generate.dataset.trajectron.TrajectronSceneData">TrajectronSceneData (class in collect.generate.dataset.trajectron)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapData.white_lines">white_lines (collect.generate.map.MapData attribute)</a>
+</li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.IntersectionReader.wp_is_sloped">wp_is_sloped (collect.generate.map.IntersectionReader attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="Y">Y</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="sections/generate.html#collect.generate.map.MapData.yellow_lines">yellow_lines (collect.generate.map.MapData attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -289,8 +394,10 @@
 <li class="toctree-l1"><a class="reference internal" href="sections/collect.html">Collect submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sections/generate.html">Generate submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sections/generate.html#module-collect.generate.label">Labels submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sections/generate.html#module-collect.generate.map">Map submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sections/dataset.html">Dataset submodule</a></li>
 <li class="toctree-l1"><a class="reference internal" href="sections/dataset.html#module-collect.generate.dataset.trajectron">Trajectron Dataset submodule</a></li>
+<li class="toctree-l1"><a class="reference internal" href="sections/development.html">Development</a></li>
 </ul>
 
 <div class="relations">

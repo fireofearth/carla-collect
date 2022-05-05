@@ -4,12 +4,14 @@ import logging
 
 import dill
 import shapely
+import shapely.geometry
 import networkx as nx
 import numpy as np
 import pandas as pd
 import carla
 
 import utility as util
+import utility.shu
 import carlautil
 import carlautil.debug
 
@@ -87,9 +89,10 @@ class MapDataExtractor(object):
         =======
         util.AttrDict
             Payload of road network information with the following keys:
-            - road_polygons: list of road polygons (closed), each represented as array of shape (?, 2)
-            - yellow_lines: list of white road lines, each represented as array of shape (?, 2)
-            - white_lines: list of white road lines, each represented as array of shape (?, 2)
+
+            * road_polygons: list of road polygons (closed), each represented as array of shape (?, 2)
+            * yellow_lines: list of white road lines, each represented as array of shape (?, 2)
+            * white_lines: list of white road lines, each represented as array of shape (?, 2)
         """
         road_polygons = []
         yellow_lines  = []
@@ -152,6 +155,20 @@ class MapDataExtractor(object):
             carlautil.to_rotations_ndarray(spawn_points, flip_y=True)), axis=-1)
 
     def extract_junction_with_portals(self):
+        """Extract junctions from the map 
+
+        Returns
+        =======
+        list of util.AttrDict
+            Each of junction has these attributes:
+
+            * **pos** : ndarray
+              - The (x, y) position of the junction.
+            * **waypoints** : ndarray
+              - Pairs of waypoint entering and exiting the junction f shape (n pairs, 2, 4).
+              Each waypoint is (x position, y position, yaw, road length).
+
+        """
         carla_topology = self.carla_map.get_topology()
         junctions = carlautil.get_junctions_from_topology_graph(carla_topology)
         _junctions = []
@@ -201,21 +218,26 @@ class MapDataExtractor(object):
                 uncontrolled=uncontrolled_junction_locations)
 
 
-def vertex_set_to_smpoly(vertex_set):
-    polygons = []
-    for vertices in vertex_set:
-        polygons.append([vertices, []])
-    return shapely.geometry.MultiPolygon(polygons)
-
-
-def vertices_to_smpoly(vertices):
-    polygons = [[vertices, []]]
-    return shapely.geometry.MultiPolygon(polygons)
-
-
 class CachedMapData(object):
     """Manages the persisting of map data from MapDataExtractor
-    to cache in a way that can be loaded for other purposes."""
+    to cache in a way that can be loaded for other purposes.
+    
+    Attributes
+    ==========
+    map_datum : dict of (str, util.AttrDict)
+        Name of map to road data consisting of:
+        road_polygons, white_lines, yellow_lines, junctions, spawn_points.
+        Road polygons and lines are obtained from
+        :meth:`~collect.generate.map.MapDataExtractor.extract_road_polygons_and_lines`.
+        Junctions are obtained from
+        :meth:`~collect.generate.map.MapDataExtractor.extract_junction_with_portals`.
+        Spawn points are obtained from 
+        :meth:`~collect.generate.map.MapDataExtractor.extract_spawn_points`.
+    map_to_smpolys : dict of (str, (list of MultiPolygon))
+        Name of map to Shapely MultiPolygon boxes bounding junction entrance/exits.
+    map_to_scircles : dict of (str, (list of Polygon))
+        Name of map to Shapely circle covering junction region.
+    """
 
     TLIGHT_DETECT_RADIUS = 25.0
 
@@ -263,9 +285,7 @@ class CachedMapData(object):
     def __init__(self):
         """Load map data from cache and collect shapes of all the intersections."""
         self.map_datum = { }
-        # map to Shapely MultiPolygon for junction entrance/exits
         self.map_to_smpolys = {}
-        # map to Shapely Circle covering junction region
         self.map_to_scircles = {}
         
         logger.info("Retrieve map from cache.")
@@ -278,6 +298,7 @@ class CachedMapData(object):
                 white_lines=payload["white_lines"],
                 yellow_lines=payload["yellow_lines"],
                 junctions=payload["junctions"],
+                spawn_points=payload["spawn_points"]
             )
 
         logger.info("Retrieving some data from map.")
@@ -289,7 +310,7 @@ class CachedMapData(object):
                 vertex_set = util.map_to_ndarray(
                     lambda wps: util.starmap(f, wps), _junction.waypoints
                 )
-                smpolys = util.map_to_list(vertex_set_to_smpoly, vertex_set)
+                smpolys = util.map_to_list(util.shu.vertex_set_to_smpoly, vertex_set)
                 util.setget_list_from_dict(self.map_to_smpolys, map_name).extend(smpolys)
                 x, y = _junction.pos
                 scircle = shapely.geometry.Point(x, y).buffer(self.TLIGHT_DETECT_RADIUS)
@@ -369,17 +390,18 @@ class MapQuerier(ABC):
         Returns
         =======
         util.AttrDict
-            Container of road segment properties.
-            - spline : scipy.interpolate.CubicSpline
-                The spline representing the path the vehicle should motion plan on.
-            - polytopes : list of (ndarray, ndarray)
-                List of polytopes in H-representation (A, b)
-                where x is in polytope if Ax <= b.
-            - distances : ndarray
-                The distances along the spline to follow from nearest endpoint
-                before encountering corresponding covering polytope in index.
-            - positions : ndarray
-                The 2D positions of center of the covering polytope in index.
+            Container of road segment properties:
+
+            * **spline** : scipy.interpolate.CubicSpline
+              - The spline representing the path the vehicle should motion plan on.
+            * **polytopes** : list of (ndarray, ndarray)
+              - List of polytopes in H-representation (A, b)
+              where x is in polytope if Ax <= b.
+            * **distances** : ndarray
+              - The distances along the spline to follow from nearest endpoint
+              before encountering corresponding covering polytope in index.
+            * **positions** : ndarray
+              - The 2D positions of center of the covering polytope in index.
         """
         t = actor.get_transform()
         wp = self.carla_map.get_waypoint(t.location)

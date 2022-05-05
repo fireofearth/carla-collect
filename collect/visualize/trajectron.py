@@ -8,6 +8,15 @@ import matplotlib.animation as animation
 import matplotlib.patches as patches
 import cv2 as cv
 
+from ..utility.trajectron import scene_to_df
+
+AGENT_COLORS = [
+        'blue', 'darkviolet', 'dodgerblue', 'darkturquoise',
+        'green', 'gold', 'orange', 'red', 'deeppink']
+AGENT_COLORS = np.array(AGENT_COLORS) \
+        .take([(i * 5) % len(AGENT_COLORS) for i in range(17)], 0)
+NCOLORS = len(AGENT_COLORS)
+PADDING = 20
 
 def render_entire_map(ax, map_data):
     for poly in map_data.road_polygons:
@@ -94,3 +103,21 @@ def render_scene(ax, scene, white_road=False, global_coordinates=False):
     ax.imshow(road_div_bitmap, extent=extent, origin='lower', cmap=colors.ListedColormap(['none', 'yellow']))
     ax.imshow(lane_div_bitmap, extent=extent, origin='lower', cmap=colors.ListedColormap(['none', 'silver']))
 
+def render_scene_nodes(ax, scene, zoom_in=False):
+    render_scene(ax, scene)
+    scene_df = scene_to_df(scene)
+    node_ids = scene_df['node_id'].unique()
+    for idx, node_id in enumerate(node_ids):
+        node_df = scene_df[scene_df['node_id'] == node_id]
+        X = node_df[['position_x', 'position_y']].values
+        ax.plot(*X.T, '-o', color=AGENT_COLORS[idx % NCOLORS])
+    if zoom_in:
+        X = scene_df[['position_x', 'position_y']].values
+        x_min, y_min = np.min(X, axis=0)
+        x_max, y_max = np.max(X, axis=0)
+        ax.set_xlim([x_min - PADDING, x_max + PADDING])
+        ax.set_ylim([y_min - PADDING, y_max + PADDING])
+    else:
+        ax.set_xlim([0, scene.x_size])
+        ax.set_ylim([0, scene.y_size])
+    return node_ids
