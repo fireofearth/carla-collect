@@ -410,7 +410,7 @@ class MidlevelAgent(AbstractDataCollector):
                 self.__ego_vehicle, flip_y=True)
         r = v_lim / 2
         v_1 = r
-        v_2 = 0.75 * v_lim
+        v_2 = 0.75 * v_lim # TODO: this isn't a good setting
         c1 = v_2*((v_x - r*np.cos(theta))*np.cos(theta) \
                 + (v_y - r*np.sin(theta))*np.sin(theta))
         c2 = v_1*((v_y - r*np.sin(theta))*np.cos(theta) \
